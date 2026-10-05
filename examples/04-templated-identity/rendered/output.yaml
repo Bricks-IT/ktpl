@@ -1,0 +1,17 @@
+# Templated identity: allowed, but this object can't be referenced by any other object.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: acme-prod
+  annotations:
+    ktpl.io/rendered: '{"metadata.name":1}'
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: acme-config
+  namespace: acme-prod
+  annotations:
+    ktpl.io/rendered: '{"metadata.name":1,"metadata.namespace":1,"data.tenant":1}'
+data:
+  tenant: acme

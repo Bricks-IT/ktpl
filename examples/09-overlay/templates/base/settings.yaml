@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: settings
+  namespace: shop
+  annotations:
+    ktpl.io/local: "true"
+data:
+  image: ghcr.io/acme/api:latest
+  replicas: "1"

@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config
+  namespace: shop
+data:
+  # iteration 1: only depends on static objects
+  ENV: '{{ ref "shop/configmap/platform" "data.env" }}'
+  BASE_URL: 'https://shop.{{ ref "shop/configmap/platform" "data.domain" }}'
+  API_URL: 'http://{{ ref "shop/service/api" "metadata.name" }}.shop.svc:{{ ref "shop/service/api" "spec.ports[0].port" }}'

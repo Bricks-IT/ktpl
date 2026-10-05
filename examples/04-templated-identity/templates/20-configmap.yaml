@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: '{{ ref "shop/configmap/settings" "data.tenant" }}-config'
+  namespace: '{{ ref "shop/configmap/settings" "data.namespace" }}'
+data:
+  tenant: '{{ ref "shop/configmap/settings" "data.tenant" }}'

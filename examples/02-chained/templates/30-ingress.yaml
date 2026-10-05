@@ -1,0 +1,19 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: api
+  namespace: shop
+spec:
+  rules:
+    # iteration 2: BASE_URL is only resolved at iteration 1
+    - host: '{{ ref "shop/configmap/app-config" "data.BASE_URL" | trimPrefix "https://" }}'
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                # iteration 1
+                name: '{{ ref "shop/service/api" "metadata.name" }}'
+                port:
+                  name: '{{ ref "shop/service/api" "spec.ports[0].name" }}'

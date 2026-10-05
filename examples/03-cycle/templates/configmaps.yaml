@@ -1,0 +1,16 @@
+# a.data.x depends on b.data.y, which depends on a.data.x -> cycle.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: a
+  namespace: demo
+data:
+  x: 'from-b-{{ ref "demo/configmap/b" "data.y" }}'
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: b
+  namespace: demo
+data:
+  y: 'from-a-{{ ref "demo/configmap/a" "data.x" }}'

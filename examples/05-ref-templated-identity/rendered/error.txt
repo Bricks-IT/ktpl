@@ -1,0 +1,1 @@
+Error: iteration 1: demo/ConfigMap/consumer data.copy (templates/objects.yaml:15): ref "demo/configmap/generated": object not found (objects with a templated metadata.name or metadata.namespace cannot be referenced)

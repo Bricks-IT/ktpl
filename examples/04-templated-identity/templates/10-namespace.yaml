@@ -1,0 +1,5 @@
+# Templated identity: allowed, but this object can't be referenced by any other object.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: '{{ ref "shop/configmap/settings" "data.namespace" }}'

@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: '{{ "generated" }}'
+  namespace: demo
+data:
+  key: value
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: consumer
+  namespace: demo
+data:
+  copy: '{{ ref "demo/configmap/generated" "data.key" }}'

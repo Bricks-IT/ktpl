@@ -1,0 +1,9 @@
+# Partial object: merged onto base/settings.yaml (same identity), JSON Merge Patch semantics.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: settings
+  namespace: shop
+data:
+  image: ghcr.io/acme/api:1.4.2
+  replicas: "3"

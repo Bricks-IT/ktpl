@@ -1,0 +1,12 @@
+# ktpl.io/ignore-key: JSON list of paths whose subtree is never templated.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboards
+  namespace: shop
+  annotations:
+    ktpl.io/ignore-key: |
+      ["data['dashboard.json']"]
+data:
+  title: 'API ({{ ref "shop/configmap/settings" "data.env" }})'
+  dashboard.json: '{"title": "{{ .title }}"}'

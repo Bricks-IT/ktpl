@@ -1,0 +1,34 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api
+  namespace: shop
+  annotations:
+    ktpl.io/rendered: '{"spec.replicas":1,"spec.template.spec.containers[0].image":1}'
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: api
+  template:
+    metadata:
+      labels:
+        app: api
+    spec:
+      containers:
+        - name: api
+          image: ghcr.io/acme/api:1.4.2
+---
+# New object, only present in prod.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: api
+  namespace: shop
+  annotations:
+    ktpl.io/rendered: '{"spec.selector.matchLabels":1}'
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: api

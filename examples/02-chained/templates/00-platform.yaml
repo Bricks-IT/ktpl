@@ -1,0 +1,14 @@
+# "Values" object: can be referenced, but is not emitted (ktpl.io/local).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: platform
+  namespace: shop
+  annotations:
+    ktpl.io/local: "true"
+data:
+  env: prod
+  domain: example.com
+  replicas: "3"
+  image: ghcr.io/acme/api
+  version: "1.4.2"

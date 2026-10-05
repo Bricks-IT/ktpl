@@ -1,0 +1,31 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api
+  namespace: shop
+  labels:
+    app: api
+    env: '{{ ref "shop/configmap/platform" "data.env" }}' # iteration 1
+spec:
+  replicas: '{{ ref "shop/configmap/platform" "data.replicas" | int }}' # iteration 1, sprig cast "3" -> 3
+  selector:
+    matchLabels:
+      app: api
+  template:
+    metadata:
+      # iteration 2: copies the metadata.labels map (resolved at iteration 1), native type kept
+      labels: '{{ ref "shop/deployment/api" "metadata.labels" }}'
+    spec:
+      containers:
+        - name: api
+          image: '{{ ref "shop/configmap/platform" "data.image" }}:{{ ref "shop/configmap/platform" "data.version" }}'
+          ports:
+            - name: http
+              containerPort: '{{ ref "shop/service/api" "spec.ports[0].port" }}' # iteration 1, native int
+          envFrom:
+            - configMapRef:
+                name: app-config
+          env:
+            - name: PUBLIC_HOST
+              # iteration 3: depends on the ingress host (iteration 2)
+              value: '{{ ref "shop/ingress/api" "spec.rules[0].host" }}'

@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: settings
+  namespace: shop
+  annotations:
+    ktpl.io/local: "true"
+data:
+  tenant: acme
+  namespace: acme-prod

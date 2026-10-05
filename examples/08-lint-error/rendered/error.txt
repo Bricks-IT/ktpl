@@ -1,0 +1,2 @@
+Error: iteration 1: lint failed, 1 error(s):
+  demo/ConfigMap/web metadata.labels.settings (templates/objects.yaml:16): label value must be a string, got map

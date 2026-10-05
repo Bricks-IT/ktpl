@@ -1,0 +1,31 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: step0
+  namespace: demo
+data:
+  value: start
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: step1
+  namespace: demo
+data:
+  value: '{{ ref "demo/configmap/step0" "data.value" }}-1'
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: step2
+  namespace: demo
+data:
+  value: '{{ ref "demo/configmap/step1" "data.value" }}-2'
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: step3
+  namespace: demo
+data:
+  value: '{{ ref "demo/configmap/step2" "data.value" }}-3'

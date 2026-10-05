@@ -1,0 +1,30 @@
+# ktpl.io/ignore-key: JSON list of paths whose subtree is never templated.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboards
+  namespace: shop
+  annotations:
+    ktpl.io/ignore-key: |
+      ["data['dashboard.json']"]
+    ktpl.io/rendered: '{"data.title":1}'
+data:
+  title: API (prod)
+  dashboard.json: '{"title": "{{ .title }}"}'
+---
+# ktpl.io/ignore: the whole object is left untouched (it can still be referenced).
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: api-alerts
+  namespace: shop
+  annotations:
+    ktpl.io/ignore: "true"
+spec:
+  groups:
+    - name: api
+      rules:
+        - alert: ApiDown
+          expr: up{job="api"} == 0
+          annotations:
+            summary: 'Instance {{ $labels.instance }} is down'

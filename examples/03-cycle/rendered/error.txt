@@ -1,0 +1,3 @@
+Error: iteration 1: no progress, 2 pending field(s), dependency cycle:
+  demo/ConfigMap/a data.x (templates/configmaps.yaml:8) <- demo/ConfigMap/b data.y
+  demo/ConfigMap/b data.y (templates/configmaps.yaml:16) <- demo/ConfigMap/a data.x
