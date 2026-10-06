@@ -68,6 +68,23 @@ labels:
 		Expect(node.MapValue(labels, "name").Value).To(Equal("demo"))
 	})
 
+	It("ignores sequence with pending templates", func() {
+		input := `
+labels:
+  <<:
+    - '{{ ref "ns/cm/foo" "metadata.labels" }}'
+    - '{{ ref "ns/cm/bar" "metadata.labels" }}'
+  name: "demo"
+`
+		var doc yaml.Node
+		Expect(yaml.Unmarshal([]byte(input), &doc)).To(Succeed())
+
+		Expect(node.ExpandMergeKeys(&doc)).To(Succeed())
+
+		labels := node.MapValue(doc.Content[0], "labels")
+		Expect(node.MapIndex(labels, "<<")).To(BeNumerically(">=", 0))
+	})
+
 	It("fails if << is an invalid type", func() {
 		input := `
 labels:
@@ -76,7 +93,6 @@ labels:
 		var doc yaml.Node
 		Expect(yaml.Unmarshal([]byte(input), &doc)).To(Succeed())
 
-		// Replace with an int node so it's not a scalar string
 		Expect(node.ExpandMergeKeys(&doc)).To(MatchError(ContainSubstring("must be a mapping or sequence of mappings")))
 	})
 })

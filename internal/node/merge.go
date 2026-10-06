@@ -53,6 +53,9 @@ func ExpandMergeKeys(n *yaml.Node) error {
 			mapsToMerge = append(mapsToMerge, val)
 		case yaml.SequenceNode:
 			for _, item := range val.Content {
+				if IsString(item) && strings.Contains(item.Value, "{{") {
+					return nil
+				}
 				if item.Kind != yaml.MappingNode {
 					return fmt.Errorf("YAML merge key sequence must contain mappings, got %s", KindName(item))
 				}
