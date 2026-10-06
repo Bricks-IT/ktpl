@@ -37,7 +37,7 @@ cover: ## Run tests with coverage (coverage.out)
 
 .PHONY: golden
 golden: ## Regenerate examples/*/rendered (REVIEW the diff afterwards)
-	go test ./internal/cli -run TestGolden -update
+	go test ./internal/cli -run TestCLI -update -ginkgo.label-filter=golden
 	@git status --short examples/ || true
 
 .PHONY: fuzz

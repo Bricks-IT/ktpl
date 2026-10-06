@@ -1,0 +1,9 @@
+# Partial object: merged onto base/deployment.yaml. The emitted Deployment gets
+# ktpl.io/sources: '["templates/base","templates/prod"]'.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api
+  namespace: shop
+  labels:
+    env: prod

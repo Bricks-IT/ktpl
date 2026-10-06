@@ -19,14 +19,23 @@ import (
 // Options configures the loader.
 type Options struct {
 	LeftDelim string
+	Stdin     io.Reader
 }
 
 // Load reads every .yaml, .yml and .json file below each root (recursively, sorted by path) and
 // returns the objects in command-line order, then path order, then document order.
-// A root may also be a single file.
+// A root may also be a single file, or "-" to read from stdin.
 func Load(roots []string, opts Options) ([]*object.Object, error) {
 	var objs []*object.Object
 	for i, root := range roots {
+		if root == "-" {
+			docs, err := loadReader(opts.Stdin, "<stdin>", "-", i, opts)
+			if err != nil {
+				return nil, err
+			}
+			objs = append(objs, docs...)
+			continue
+		}
 		files, err := listFiles(root)
 		if err != nil {
 			return nil, err
@@ -80,9 +89,19 @@ func loadFile(file, root string, folder int, opts Options) ([]*object.Object, er
 		return nil, err
 	}
 	defer func() { _ = f.Close() }()
+	return decodeDocuments(f, display, filepath.ToSlash(root), folder, opts)
+}
 
+func loadReader(r io.Reader, display, root string, folder int, opts Options) ([]*object.Object, error) {
+	if r == nil {
+		return nil, errors.New("cannot read from stdin: stdin is nil")
+	}
+	return decodeDocuments(r, display, root, folder, opts)
+}
+
+func decodeDocuments(r io.Reader, display, root string, folder int, opts Options) ([]*object.Object, error) {
 	var objs []*object.Object
-	dec := yaml.NewDecoder(f)
+	dec := yaml.NewDecoder(r)
 	for {
 		var doc yaml.Node
 		err := dec.Decode(&doc)
@@ -98,8 +117,10 @@ func loadFile(file, root string, folder int, opts Options) ([]*object.Object, er
 		if err := checkDuplicateKeys(doc.Content[0], display); err != nil {
 			return nil, err
 		}
-		node.ExpandAliases(&doc)
-		obj, err := object.New(&doc, display, filepath.ToSlash(root), folder, opts.LeftDelim)
+		if err := node.ExpandAliases(&doc); err != nil {
+			return nil, fmt.Errorf("%s: %w", display, err)
+		}
+		obj, err := object.New(&doc, display, root, folder, opts.LeftDelim)
 		if err != nil {
 			return nil, err
 		}

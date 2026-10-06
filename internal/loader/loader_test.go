@@ -3,6 +3,7 @@ package loader
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -13,8 +14,6 @@ func TestLoader(t *testing.T) {
 	RegisterFailHandler(Fail)
 	RunSpecs(t, "loader")
 }
-
-const cm = "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: %s\n"
 
 func write(dir, rel, content string) {
 	p := filepath.Join(dir, rel)
@@ -82,5 +81,19 @@ var _ = Describe("Load", func() {
 	It("fails on a missing input", func() {
 		_, err := Load([]string{filepath.Join(dir, "nope")}, Options{LeftDelim: "{{"})
 		Expect(err).To(MatchError(ContainSubstring("no such file or directory")))
+	})
+
+	It("loads manifests from stdin when '-' is provided", func() {
+		input := "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: from-stdin\n"
+		objs, err := Load([]string{"-"}, Options{LeftDelim: "{{", Stdin: strings.NewReader(input)})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(objs).To(HaveLen(1))
+		Expect(objs[0].ID.Name).To(Equal("from-stdin"))
+		Expect(objs[0].File).To(Equal("<stdin>"))
+	})
+
+	It("fails when stdin is nil and '-' is requested", func() {
+		_, err := Load([]string{"-"}, Options{LeftDelim: "{{"})
+		Expect(err).To(MatchError(ContainSubstring("stdin is nil")))
 	})
 })

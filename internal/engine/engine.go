@@ -34,11 +34,11 @@ type Options struct {
 
 // Observer is notified after each iteration. Returning stop=true ends the run with a partial state.
 type Observer interface {
-	Iteration(r *Report) (stop bool, err error)
+	Iteration(r *IterationReport) (stop bool, err error)
 }
 
-// Report describes one finished iteration.
-type Report struct {
+// IterationReport describes one finished iteration.
+type IterationReport struct {
 	Iteration int
 	Max       int
 	Rendered  []*Field
@@ -206,7 +206,7 @@ func Run(objs []*object.Object, opts Options) (*Result, error) {
 		}
 		remaining := e.pendingFields()
 		if opts.Observer != nil {
-			stop, err := opts.Observer.Iteration(&Report{Iteration: k, Max: opts.MaxIterations, Rendered: rendered, Pending: remaining, Objects: objs})
+			stop, err := opts.Observer.Iteration(&IterationReport{Iteration: k, Max: opts.MaxIterations, Rendered: rendered, Pending: remaining, Objects: objs})
 			if err != nil {
 				return nil, err
 			}
@@ -297,7 +297,7 @@ func (e *engine) overlapping(o *object.Object, p path.Path) *Field {
 }
 
 func (e *engine) lint(k int) error {
-	errs := lint.Run(&lint.Context{IsPending: e.isPending}, e.objs)
+	errs := lint.Run(&lint.State{IsPending: e.isPending}, e.objs)
 	if len(errs) > 0 {
 		return &LintError{Iteration: k, Errors: errs}
 	}

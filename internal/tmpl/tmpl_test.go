@@ -2,6 +2,7 @@ package tmpl
 
 import (
 	"errors"
+	"sync"
 	"testing"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -106,5 +107,22 @@ var _ = Describe("function map", func() {
 			Expect(h).NotTo(HaveKey(name))
 		}
 		Expect(h).To(HaveKey("upper"))
+	})
+
+	It("safely serializes concurrent Execute calls", func() {
+		t, err := NewCompiler(Options{}).Compile("f", `{{ ref "a/b" "v" }}`)
+		Expect(err).NotTo(HaveOccurred())
+
+		var wg sync.WaitGroup
+		for i := 0; i < 50; i++ {
+			wg.Add(1)
+			go func(val int) {
+				defer wg.Done()
+				res, err := t.Execute(fakeResolver{"a/b v": val})
+				Expect(err).NotTo(HaveOccurred())
+				Expect(res.Value).To(Equal(val))
+			}(i)
+		}
+		wg.Wait()
 	})
 })

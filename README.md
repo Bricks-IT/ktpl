@@ -1,6 +1,6 @@
 # ktpl
 
-> **Status: design draft.** Syntax and behaviour described here are being validated; nothing is implemented yet.
+> **Status: design draft.** Syntax and behaviour described here are being validated; nothing is implemented yet. This application is actually vibe coded for proof of concept.
 
 **ktpl** is a templating engine for Kubernetes that only knows **native Kubernetes objects**.
 No `values.yaml`, no `Chart.yaml`, no `kustomization.yaml`: the objects in your folder *are* the values.
@@ -156,7 +156,16 @@ metadata:
     ktpl.io/rendered: '{"spec.replicas":1,"spec.template.spec.containers[0].env[0].value":3}'
 ```
 
-`--no-annotations` disables it.
+An object merged from several input folders (see [overlays](#multiple-folders-overlays)) also gets the list of those
+folders, in application order, as typed on the command line (cleaned):
+
+```yaml
+metadata:
+  annotations:
+    ktpl.io/sources: '["templates/base","templates/prod"]'
+```
+
+`--no-annotations` disables both.
 
 ### Read by ktpl
 
@@ -211,8 +220,26 @@ ktpl base/ prod/
 - Objects only present in a later folder are appended.
 - Duplicate identities **inside the same folder** are an error.
 - Merging happens **before** iteration 0; objects with a templated identity are never merged.
+- A merged object records its folders in the `ktpl.io/sources` annotation.
 
-See [09-overlay](examples/09-overlay).
+**Parameters pattern.** Put the tunables in one local ConfigMap (e.g. `ktpl-parameter`) in `base/`, read it with `ref`
+everywhere, and override only the keys that change in `prod/ktpl-parameter.yaml`. Since references are resolved after
+the merge, every base manifest picks up the prod values:
+
+```yaml
+# base/ktpl-parameter.yaml                     # prod/ktpl-parameter.yaml
+apiVersion: v1                                 apiVersion: v1
+kind: ConfigMap                                kind: ConfigMap
+metadata:                                      metadata:
+  name: ktpl-parameter                           name: ktpl-parameter
+  namespace: argocd                              namespace: argocd
+  annotations:                                 data:
+    ktpl.io/local: "true"                        domain: argocd.prod.example.com
+data:
+  domain: argocd.example.com
+```
+
+See [09-overlay](examples/09-overlay) and [10-argocd](examples/10-argocd).
 
 ## Step-by-step mode
 
@@ -266,8 +293,9 @@ ktpl [flags] <folder>...
   -i, --max-iterations int   maximum number of iterations (default 5)
   -s, --step                 interactive mode, pause after each iteration
       --stop-after int       stop after N iterations and emit the partial state
-  -o, --output string        output folder (default: stdout, multi-document stream)
-      --no-annotations       do not write the ktpl.io/rendered annotation
+      --render-dst string    output destination: 'stdout' or 'dir://<dir>' (default "stdout")
+  -o, --output string        output folder (shorthand for --render-dst dir://<dir>)
+      --no-annotations       do not write the ktpl.io/rendered and ktpl.io/sources annotations
       --keep-local           also emit local objects
       --hermetic             forbid non-deterministic template functions
       --left-delim string    left template delimiter (default "{{")
@@ -276,7 +304,9 @@ ktpl [flags] <folder>...
 ```
 
 Inputs: `.yaml`, `.yml`, `.json` files, walked recursively, multi-document, sorted by path.
-With `-o`, each object is written to the path of the file it came from (relative to its input folder).
+A root can also be a single file, or `-` to read manifests from standard input (`stdin`).
+With `--render-dst dir://<dir>` (or `-o <dir>`), each object is written to the path of the file it came from
+(relative to its input folder), preserving the source directory structure.
 
 ## Examples
 
@@ -293,13 +323,14 @@ stdout (or `rendered/error.txt` the expected stderr), and an optional `args` fil
 | [06-ignore](examples/06-ignore) | `ktpl.io/ignore` and `ktpl.io/ignore-key` |
 | [07-max-iterations](examples/07-max-iterations) | Iteration limit reached → error |
 | [08-lint-error](examples/08-lint-error) | Per-iteration lint → error |
-| [09-overlay](examples/09-overlay) | Multiple folders, merge and append |
+| [09-overlay](examples/09-overlay) | Multiple folders, merge and append, `ktpl.io/sources` |
+| [10-argocd](examples/10-argocd) | Real app: Argo CD chart converted to ktpl, `ktpl-parameter` ConfigMap, prod overlay |
 
 ## Development
 
 ```bash
 go test ./...                       # unit tests + golden tests on examples/
-go test ./internal/cli -run TestGolden -update   # regenerate golden files (review the diff!)
+make golden                                    # regenerate golden files (review the diff!)
 golangci-lint run                   # lint
 go build ./cmd/ktpl                 # build
 ```

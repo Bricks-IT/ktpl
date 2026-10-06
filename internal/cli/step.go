@@ -35,7 +35,7 @@ func newStepper(r io.Reader, w io.Writer, objs []*object.Object) (*stepper, erro
 	return s, nil
 }
 
-func (s *stepper) Iteration(r *engine.Report) (bool, error) {
+func (s *stepper) Iteration(r *engine.IterationReport) (bool, error) {
 	p := func(format string, args ...any) { _, _ = fmt.Fprintf(s.out, format, args...) }
 	p("── Iteration %d/%d ── %d resolved · %d pending\n", r.Iteration, r.Max, len(r.Rendered), len(r.Pending))
 	for _, f := range r.Rendered {
@@ -84,6 +84,9 @@ func (s *stepper) Iteration(r *engine.Report) (bool, error) {
 }
 
 func preview(f *engine.Field) string {
+	if isSensitive(f) {
+		return "[REDACTED]"
+	}
 	v, err := convert.FromNode(f.Node)
 	if err != nil {
 		return "?"
@@ -99,6 +102,21 @@ func preview(f *engine.Field) string {
 		s = s[:previewMax-1] + "…"
 	}
 	return s
+}
+
+func isSensitive(f *engine.Field) bool {
+	if f == nil || f.Obj == nil {
+		return false
+	}
+	if strings.EqualFold(f.Obj.ID.Kind, "Secret") {
+		return true
+	}
+	lower := strings.ToLower(f.Path.String())
+	return strings.Contains(lower, "password") ||
+		strings.Contains(lower, "token") ||
+		strings.Contains(lower, "secret") ||
+		strings.Contains(lower, "apikey") ||
+		strings.Contains(lower, "privatekey")
 }
 
 // lineDiff returns a minimal line diff ("-"/"+" prefixed, unchanged lines omitted) or "" if equal.

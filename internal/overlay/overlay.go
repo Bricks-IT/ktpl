@@ -3,6 +3,7 @@ package overlay
 
 import (
 	"fmt"
+	"path/filepath"
 	"slices"
 
 	"go.yaml.in/yaml/v3"
@@ -14,6 +15,7 @@ import (
 // Merge folds objects sharing the same identity. Duplicates inside one folder are an error.
 // An object from a later folder is merged onto the earlier one, which keeps its position;
 // objects only present in later folders are appended. Floating objects are never merged.
+// A merged object records the folders it was built from in Sources, in application order.
 func Merge(objs []*object.Object, leftDelim string) ([]*object.Object, error) {
 	out := make([]*object.Object, 0, len(objs))
 	byKey := map[string]*object.Object{}
@@ -36,6 +38,10 @@ func Merge(objs []*object.Object, leftDelim string) ([]*object.Object, error) {
 				o.ID, prev.File, prev.Line(), o.File, o.Line())
 		}
 		lastSeen[key] = o
+		if len(base.Sources) == 0 {
+			base.Sources = []string{folderName(base.Root)}
+		}
+		base.Sources = append(base.Sources, folderName(o.Root))
 		Patch(base.Body(), o.Body(), func(n *yaml.Node) { base.RecordOrigin(n, o.File) })
 		if err := base.Reanalyze(leftDelim); err != nil {
 			return nil, err
@@ -45,6 +51,11 @@ func Merge(objs []*object.Object, leftDelim string) ([]*object.Object, error) {
 		}
 	}
 	return out, nil
+}
+
+// folderName normalizes an input folder as typed on the command line ("templates/prod/" -> "templates/prod").
+func folderName(root string) string {
+	return filepath.ToSlash(filepath.Clean(filepath.FromSlash(root)))
 }
 
 // Patch applies patch onto dst (both mappings) with JSON Merge Patch semantics:

@@ -1,6 +1,7 @@
 package overlay
 
 import (
+	"strings"
 	"testing"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -16,17 +17,24 @@ func TestOverlay(t *testing.T) {
 }
 
 func obj(src, file string, folder int) *object.Object {
+	return objIn(src, file, ".", folder)
+}
+
+func objIn(src, file, root string, folder int) *object.Object {
 	var doc yaml.Node
 	ExpectWithOffset(1, yaml.Unmarshal([]byte(src), &doc)).To(Succeed())
-	o, err := object.New(&doc, file, ".", folder, "{{")
+	o, err := object.New(&doc, file, root, folder, "{{")
 	ExpectWithOffset(1, err).NotTo(HaveOccurred())
 	return o
 }
 
 func encode(o *object.Object) string {
-	out, err := yaml.Marshal(o.Body())
-	ExpectWithOffset(1, err).NotTo(HaveOccurred())
-	return string(out)
+	var b strings.Builder
+	enc := yaml.NewEncoder(&b)
+	enc.SetIndent(2)
+	ExpectWithOffset(1, enc.Encode(o.Body())).To(Succeed())
+	ExpectWithOffset(1, enc.Close()).To(Succeed())
+	return b.String()
 }
 
 const base = "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: a\n"
@@ -38,7 +46,18 @@ var _ = Describe("Merge", func() {
 		out, err := Merge([]*object.Object{b, p}, "{{")
 		Expect(err).NotTo(HaveOccurred())
 		Expect(out).To(HaveLen(1))
-		Expect(encode(out[0])).To(Equal(base + "data:\n    keep: k\n    replace: new\n    list: [3]\n    nested:\n        a: 1\n        b: 2\n    added: y\n"))
+		Expect(encode(out[0])).To(Equal(base + "data:\n  keep: k\n  replace: new\n  list: [3]\n  nested:\n    a: 1\n    b: 2\n  added: y\n"))
+	})
+
+	It("records the source folders of merged objects, in application order", func() {
+		b := objIn(base, "base/a.yaml", "base/", 0)
+		solo := objIn("apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: solo\n", "base/solo.yaml", "base/", 0)
+		staging := objIn(base+"data:\n  k: s\n", "staging/a.yaml", "staging", 1)
+		prod := objIn(base+"data:\n  k: p\n", "prod/a.yaml", "./prod", 2)
+		out, err := Merge([]*object.Object{b, solo, staging, prod}, "{{")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(out[0].Sources).To(Equal([]string{"base", "staging", "prod"}))
+		Expect(out[1].Sources).To(BeNil())
 	})
 
 	It("keeps the base position and appends overlay-only objects", func() {

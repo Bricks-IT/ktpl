@@ -27,4 +27,4 @@ data:
 EOF
 
 echo "created examples/$dir"
-echo "next: edit templates/, then run: go test ./internal/cli -run 'TestGolden/$dir' -update"
+echo "next: edit templates/, then run: go test ./internal/cli -update -ginkgo.label-filter=golden -ginkgo.focus='$dir'"

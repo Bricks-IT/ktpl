@@ -44,5 +44,5 @@ Error: iteration <k>: lint failed, <n> error(s):
 
 ```bash
 go test -race ./internal/lint/...
-go test ./internal/cli -run TestGolden
+go test ./internal/cli -ginkgo.label-filter=golden
 ```

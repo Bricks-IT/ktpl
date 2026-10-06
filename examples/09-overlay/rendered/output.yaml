@@ -3,7 +3,10 @@ kind: Deployment
 metadata:
   name: api
   namespace: shop
+  labels:
+    env: prod
   annotations:
+    ktpl.io/sources: '["templates/base","templates/prod"]'
     ktpl.io/rendered: '{"spec.replicas":1,"spec.template.spec.containers[0].image":1}'
 spec:
   replicas: 3

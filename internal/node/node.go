@@ -2,22 +2,33 @@
 package node
 
 import (
+	"fmt"
+
 	"go.yaml.in/yaml/v3"
 )
 
 // DeepCopy returns a deep copy of n. Alias targets are copied as well.
+// Visited nodes are tracked to prevent infinite recursion on cyclic structures.
 func DeepCopy(n *yaml.Node) *yaml.Node {
+	return deepCopyWithVisited(n, make(map[*yaml.Node]*yaml.Node))
+}
+
+func deepCopyWithVisited(n *yaml.Node, visited map[*yaml.Node]*yaml.Node) *yaml.Node {
 	if n == nil {
 		return nil
 	}
+	if c, ok := visited[n]; ok {
+		return c
+	}
 	c := *n
+	visited[n] = &c
 	if n.Alias != nil {
-		c.Alias = DeepCopy(n.Alias)
+		c.Alias = deepCopyWithVisited(n.Alias, visited)
 	}
 	if n.Content != nil {
 		c.Content = make([]*yaml.Node, len(n.Content))
 		for i, child := range n.Content {
-			c.Content[i] = DeepCopy(child)
+			c.Content[i] = deepCopyWithVisited(child, visited)
 		}
 	}
 	return &c
@@ -114,13 +125,19 @@ func KindName(n *yaml.Node) string {
 }
 
 // Walk calls fn for n and every descendant, depth first, in document order.
+// Tracks visited nodes to prevent cycles from causing infinite recursion.
 func Walk(n *yaml.Node, fn func(*yaml.Node)) {
-	if n == nil {
+	walkWithVisited(n, fn, make(map[*yaml.Node]bool))
+}
+
+func walkWithVisited(n *yaml.Node, fn func(*yaml.Node), visited map[*yaml.Node]bool) {
+	if n == nil || visited[n] {
 		return
 	}
+	visited[n] = true
 	fn(n)
 	for _, c := range n.Content {
-		Walk(c, fn)
+		walkWithVisited(c, fn, visited)
 	}
 }
 
@@ -138,25 +155,64 @@ func SetLine(n *yaml.Node, line, column int) {
 	})
 }
 
+const (
+	maxAliasDepth      = 100
+	maxAliasExpansions = 10000
+)
+
 // ExpandAliases replaces every alias node below n by a deep copy of its target and drops anchors,
-// so that the tree can be mutated safely.
-func ExpandAliases(n *yaml.Node) {
-	if n == nil {
-		return
-	}
-	for i, c := range n.Content {
-		if c.Kind == yaml.AliasNode && c.Alias != nil {
-			cp := DeepCopy(resolveAlias(c))
-			n.Content[i] = cp
-		}
-		ExpandAliases(n.Content[i])
-	}
-	n.Anchor = ""
+// so that the tree can be mutated safely. It returns an error if cycles or limits are exceeded.
+func ExpandAliases(n *yaml.Node) error {
+	expansions := 0
+	return expandAliases(n, 0, &expansions, make(map[*yaml.Node]bool))
 }
 
-func resolveAlias(n *yaml.Node) *yaml.Node {
-	for n.Kind == yaml.AliasNode && n.Alias != nil {
-		n = n.Alias
+func expandAliases(n *yaml.Node, depth int, expansions *int, active map[*yaml.Node]bool) error {
+	if n == nil {
+		return nil
 	}
-	return n
+	if depth > maxAliasDepth {
+		return fmt.Errorf("line %d: alias expansion depth exceeded (%d)", n.Line, maxAliasDepth)
+	}
+	for i, c := range n.Content {
+		if c.Kind == yaml.AliasNode {
+			*expansions++
+			if *expansions > maxAliasExpansions {
+				return fmt.Errorf("line %d: alias expansion limit exceeded (%d)", c.Line, maxAliasExpansions)
+			}
+			target, err := resolveAlias(c, active)
+			if err != nil {
+				return err
+			}
+			active[c] = true
+			cp := DeepCopy(target)
+			n.Content[i] = cp
+			if err := expandAliases(cp, depth+1, expansions, active); err != nil {
+				return err
+			}
+			delete(active, c)
+			continue
+		}
+		if err := expandAliases(n.Content[i], depth+1, expansions, active); err != nil {
+			return err
+		}
+	}
+	n.Anchor = ""
+	return nil
+}
+
+func resolveAlias(n *yaml.Node, active map[*yaml.Node]bool) (*yaml.Node, error) {
+	seen := make(map[*yaml.Node]bool)
+	cur := n
+	for cur.Kind == yaml.AliasNode && cur.Alias != nil {
+		if seen[cur] || active[cur] {
+			return nil, fmt.Errorf("line %d: circular alias reference detected", cur.Line)
+		}
+		seen[cur] = true
+		cur = cur.Alias
+	}
+	if cur.Kind == yaml.AliasNode {
+		return nil, fmt.Errorf("line %d: unresolved alias", cur.Line)
+	}
+	return cur, nil
 }

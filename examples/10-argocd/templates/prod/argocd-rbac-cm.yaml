@@ -1,0 +1,9 @@
+# Production RBAC: merged onto base/argocd-configs/argocd-rbac-cm.yaml.
+# The emitted ConfigMap carries ktpl.io/sources: '["templates/base","templates/prod"]'.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-rbac-cm
+  namespace: argocd
+data:
+  policy.default: role:readonly

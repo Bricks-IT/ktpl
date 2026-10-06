@@ -20,6 +20,7 @@ const (
 	AnnotationIgnore      = "ktpl.io/ignore"
 	AnnotationIgnoreKey   = "ktpl.io/ignore-key"
 	AnnotationRendered    = "ktpl.io/rendered"
+	AnnotationSources     = "ktpl.io/sources"
 )
 
 // Identity identifies an object: namespace (may be empty), API group, kind and name.
@@ -55,6 +56,9 @@ type Object struct {
 	Local       bool // not emitted unless --keep-local
 	Ignore      bool // never templated
 	IgnorePaths []path.Path
+	// Sources lists the input folders merged into this object, in application order.
+	// It is set by an overlay merge only (nil for objects defined in a single folder).
+	Sources []string
 
 	// origins records nodes copied from another file by an overlay merge.
 	origins map[*yaml.Node]string
@@ -78,7 +82,7 @@ func (o *Object) Line() int { return o.Body().Line }
 // Rel returns the path of the source file relative to its input folder.
 func (o *Object) Rel() string {
 	rel, err := filepath.Rel(filepath.FromSlash(o.Root), filepath.FromSlash(o.File))
-	if err != nil || o.Root == o.File {
+	if err != nil || o.Root == o.File || strings.HasPrefix(rel, "..") || filepath.IsAbs(rel) {
 		return filepath.Base(o.File)
 	}
 	return filepath.ToSlash(rel)

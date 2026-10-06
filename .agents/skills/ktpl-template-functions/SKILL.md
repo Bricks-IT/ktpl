@@ -38,5 +38,5 @@ if --hermetic: remove sprig non-hermetic list + genPrivateKey/genCA/genSelfSigne
 
 ```bash
 go test -race ./internal/tmpl/...
-go test ./internal/cli -run TestGolden
+go test ./internal/cli -ginkgo.label-filter=golden
 ```

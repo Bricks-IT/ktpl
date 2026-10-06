@@ -251,10 +251,10 @@ var _ = Describe("Run", func() {
 
 type recordingObserver struct {
 	stopAt  int
-	reports []*Report
+	reports []*IterationReport
 }
 
-func (r *recordingObserver) Iteration(rep *Report) (bool, error) {
+func (r *recordingObserver) Iteration(rep *IterationReport) (bool, error) {
 	r.reports = append(r.reports, rep)
 	return rep.Iteration == r.stopAt, nil
 }

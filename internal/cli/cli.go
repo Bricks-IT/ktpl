@@ -7,6 +7,8 @@ import (
 	"io"
 	"os"
 	"runtime/debug"
+	"slices"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -37,6 +39,7 @@ type options struct {
 	maxIterations int
 	step          bool
 	stopAfter     int
+	renderDst     string
 	output        string
 	noAnnotations bool
 	keepLocal     bool
@@ -63,8 +66,8 @@ iterative: a field is rendered once every value it references is resolved.`,
 			}
 			return nil
 		},
-		RunE: func(_ *cobra.Command, args []string) error {
-			if err := opts.validate(); err != nil {
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := opts.validate(cmd.Flags().Changed("render-dst")); err != nil {
 				return &usageError{err}
 			}
 			return execute(args, opts, stdin, stdout, stderr)
@@ -82,8 +85,9 @@ iterative: a field is rendered once every value it references is resolved.`,
 	f.IntVarP(&opts.maxIterations, "max-iterations", "i", engine.DefaultMaxIterations, "maximum number of iterations")
 	f.BoolVarP(&opts.step, "step", "s", false, "interactive mode, pause after each iteration")
 	f.IntVar(&opts.stopAfter, "stop-after", 0, "stop after N iterations and emit the partial state")
-	f.StringVarP(&opts.output, "output", "o", "", "output folder (default: stdout, multi-document stream)")
-	f.BoolVar(&opts.noAnnotations, "no-annotations", false, "do not write the ktpl.io/rendered annotation")
+	f.StringVar(&opts.renderDst, "render-dst", "stdout", "output destination: 'stdout' or 'dir://<dir>'")
+	f.StringVarP(&opts.output, "output", "o", "", "output folder (shorthand for --render-dst dir://<dir>)")
+	f.BoolVar(&opts.noAnnotations, "no-annotations", false, "do not write the ktpl.io/rendered and ktpl.io/sources annotations")
 	f.BoolVar(&opts.keepLocal, "keep-local", false, "also emit local objects")
 	f.BoolVar(&opts.hermetic, "hermetic", false, "forbid non-deterministic template functions")
 	f.StringVar(&opts.leftDelim, "left-delim", defaultDel, "left template delimiter")
@@ -101,7 +105,7 @@ iterative: a field is rendered once every value it references is resolved.`,
 	return ExitOK
 }
 
-func (o *options) validate() error {
+func (o *options) validate(renderDstChanged bool) error {
 	switch {
 	case o.maxIterations < 1:
 		return fmt.Errorf("--max-iterations must be >= 1, got %d", o.maxIterations)
@@ -111,6 +115,12 @@ func (o *options) validate() error {
 		return fmt.Errorf("--stop-after (%d) cannot exceed --max-iterations (%d)", o.stopAfter, o.maxIterations)
 	case o.leftDelim == "" || o.rightDelim == "":
 		return errors.New("--left-delim and --right-delim must not be empty")
+	case o.renderDst != "stdout" && !strings.HasPrefix(o.renderDst, "dir://"):
+		return fmt.Errorf("invalid --render-dst %q: must be 'stdout' or 'dir://<dir>'", o.renderDst)
+	case strings.HasPrefix(o.renderDst, "dir://") && strings.TrimPrefix(o.renderDst, "dir://") == "":
+		return errors.New("--render-dst dir:// requires a target directory")
+	case o.output != "" && renderDstChanged && o.renderDst != "dir://"+o.output:
+		return errors.New("cannot specify both -o/--output and --render-dst")
 	}
 	return nil
 }
@@ -118,7 +128,7 @@ func (o *options) validate() error {
 func execute(roots []string, opts *options, stdin io.Reader, stdout, stderr io.Writer) error {
 	tmplOpts := tmpl.Options{LeftDelim: opts.leftDelim, RightDelim: opts.rightDelim, Hermetic: opts.hermetic}
 
-	objs, err := loader.Load(roots, loader.Options{LeftDelim: opts.leftDelim})
+	objs, err := loader.Load(roots, loader.Options{LeftDelim: opts.leftDelim, Stdin: stdin})
 	if err != nil {
 		return err
 	}
@@ -129,6 +139,9 @@ func execute(roots []string, opts *options, stdin io.Reader, stdout, stderr io.W
 
 	engOpts := engine.Options{MaxIterations: opts.maxIterations, StopAfter: opts.stopAfter, Template: tmplOpts}
 	if opts.step {
+		if slices.Contains(roots, "-") {
+			return &usageError{errors.New("--step cannot be used when reading from stdin ('-')")}
+		}
 		if !isTerminal(stdin) {
 			return &usageError{errors.New("--step requires an interactive terminal on stdin")}
 		}
@@ -149,8 +162,14 @@ func execute(roots []string, opts *options, stdin io.Reader, stdout, stderr io.W
 		}
 	}
 	selected := render.Selected(res.Objects, render.Options{KeepLocal: opts.keepLocal})
-	if opts.output != "" {
-		return render.WriteDir(opts.output, selected)
+	outDir := ""
+	if strings.HasPrefix(opts.renderDst, "dir://") {
+		outDir = strings.TrimPrefix(opts.renderDst, "dir://")
+	} else if opts.output != "" {
+		outDir = opts.output
+	}
+	if outDir != "" {
+		return render.WriteDir(outDir, selected)
 	}
 	return render.Encode(stdout, selected)
 }

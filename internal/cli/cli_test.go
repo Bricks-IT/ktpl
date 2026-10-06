@@ -66,6 +66,9 @@ var _ = Describe("Run", func() {
 		Entry("max-iterations < 1", []string{"-i", "0", "x"}, "--max-iterations must be >= 1"),
 		Entry("stop-after > max", []string{"--stop-after", "6", "x"}, "--stop-after (6) cannot exceed --max-iterations (5)"),
 		Entry("empty delimiter", []string{"--left-delim", "", "x"}, "must not be empty"),
+		Entry("invalid render-dst", []string{"--render-dst", "ftp", "x"}, "invalid --render-dst \"ftp\": must be 'stdout' or 'dir://<dir>'"),
+		Entry("empty dir render-dst", []string{"--render-dst", "dir://", "x"}, "--render-dst dir:// requires a target directory"),
+		Entry("conflicting output and render-dst", []string{"-o", "a", "--render-dst", "dir://b", "x"}, "cannot specify both -o/--output and --render-dst"),
 	)
 
 	It("prints the version", func() {
@@ -110,6 +113,16 @@ var _ = Describe("Run", func() {
 		Expect(string(content)).To(ContainSubstring("v: abc"))
 	})
 
+	It("writes files mirroring the input tree with --render-dst dir://<dir>", func() {
+		out := filepath.Join(GinkgoT().TempDir(), "out")
+		r := run("", "--render-dst", "dir://"+out, dir)
+		Expect(r.code).To(Equal(ExitOK), r.stderr)
+		Expect(r.stdout).To(BeEmpty())
+		content, err := os.ReadFile(filepath.Join(out, "chain.yaml"))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(string(content)).To(ContainSubstring("v: abc"))
+	})
+
 	It("forbids non-deterministic functions with --hermetic", func() {
 		Expect(os.WriteFile(filepath.Join(dir, "now.yaml"), []byte("apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: t\ndata:\n  t: '{{ now }}'\n"), 0o644)).To(Succeed())
 		r := run("", "--hermetic", dir)
@@ -140,6 +153,26 @@ var _ = Describe("Run", func() {
 			Expect(r.stderr).NotTo(ContainSubstring("Iteration 2"))
 			Expect(r.stdout).To(ContainSubstring(`{{ ref "demo/configmap/b"`))
 		})
+
+		It("redacts sensitive and Secret fields in preview", func() {
+			sec := "apiVersion: v1\nkind: Secret\nmetadata:\n  name: my-sec\n  namespace: demo\ndata:\n  password: '{{ ref \"demo/configmap/a\" \"data.v\" }}'\n"
+			Expect(os.WriteFile(filepath.Join(dir, "sec.yaml"), []byte(sec), 0o644)).To(Succeed())
+			r := run("\n\n", "--step", dir)
+			Expect(r.code).To(Equal(ExitOK), r.stderr)
+			Expect(r.stderr).To(ContainSubstring("[REDACTED]"))
+		})
+	})
+
+	It("renders manifests provided on stdin with '-'", func() {
+		r := run(chain, "-")
+		Expect(r.code).To(Equal(ExitOK), r.stderr)
+		Expect(r.stdout).To(ContainSubstring("v: abc"))
+	})
+
+	It("rejects --step with '-'", func() {
+		r := run(chain, "--step", "-")
+		Expect(r.code).To(Equal(ExitUsage), r.stderr)
+		Expect(r.stderr).To(ContainSubstring("--step cannot be used when reading from stdin"))
 	})
 })
 

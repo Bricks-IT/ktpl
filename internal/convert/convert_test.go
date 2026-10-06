@@ -22,7 +22,11 @@ func parse(src string) *yaml.Node {
 var _ = Describe("FromNode", func() {
 	DescribeTable("scalars and collections",
 		func(src string, want any) {
-			Expect(FromNode(parse(src))).To(Equal(want))
+			if want == nil {
+				Expect(FromNode(parse(src))).To(BeNil())
+			} else {
+				Expect(FromNode(parse(src))).To(Equal(want))
+			}
 		},
 		Entry("string", "hello", "hello"),
 		Entry("quoted number stays a string", `"3"`, "3"),

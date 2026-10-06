@@ -4,6 +4,7 @@ package tmpl
 import (
 	"maps"
 	"strings"
+	"sync"
 	"text/template"
 	"text/template/parse"
 )
@@ -45,6 +46,7 @@ func (c *Compiler) LeftDelim() string { return c.opts.LeftDelim }
 
 // Template is a compiled field template.
 type Template struct {
+	mu       sync.Mutex
 	tmpl     *template.Template
 	single   bool
 	res      Resolver
@@ -88,8 +90,10 @@ func (c *Compiler) Compile(name, src string) (*Template, error) {
 // Single reports whether the template is exactly one action (typed result).
 func (t *Template) Single() bool { return t.single }
 
-// Execute runs the template with r bound to `ref`. Executions must not run concurrently.
+// Execute runs the template with r bound to `ref`.
 func (t *Template) Execute(r Resolver) (Result, error) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
 	t.res, t.captured, t.gotValue = r, nil, false
 	defer func() { t.res, t.captured = nil, nil }()
 	var b strings.Builder
@@ -113,10 +117,10 @@ func (t *Template) capture(v any) string {
 
 // singleAction returns the action node if the template body is exactly one action without declarations.
 func singleAction(t *template.Template) *parse.ActionNode {
-	if t.Tree == nil || t.Tree.Root == nil || len(t.Tree.Root.Nodes) != 1 {
+	if t.Tree == nil || t.Root == nil || len(t.Root.Nodes) != 1 {
 		return nil
 	}
-	act, ok := t.Tree.Root.Nodes[0].(*parse.ActionNode)
+	act, ok := t.Root.Nodes[0].(*parse.ActionNode)
 	if !ok || act.Pipe == nil || len(act.Pipe.Decl) > 0 {
 		return nil
 	}

@@ -1,0 +1,40 @@
+# ktpl-parameter: the single place to customise this Argo CD install.
+#
+# - It is a *local* object (ktpl.io/local): every other manifest reads it with `ref`, but it is never emitted.
+# - Values are strings (ConfigMap data); consumers convert them when needed, e.g. `| int` for replicas.
+# - A parameter may itself be a template: argocdImage is derived from argocdRepository and version.
+# - metadata.namespace is deliberately NOT a parameter: an object whose namespace is templated is "floating"
+#   and can never be referenced. Change "argocd" in the files (or add an overlay folder) instead.
+# - Environment-specific values go in an overlay folder (see ../prod/ktpl-parameter.yaml).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ktpl-parameter
+  namespace: argocd
+  annotations:
+    ktpl.io/local: "true"
+data:
+  # Versions and images
+  version: v3.5.3
+  argocdRepository: quay.io/argoproj/argocd
+  argocdImage: '{{ ref "argocd/configmap/ktpl-parameter" "data.argocdRepository" }}:{{ ref "argocd/configmap/ktpl-parameter" "data.version" }}'
+  dexImage: ghcr.io/dexidp/dex:v2.45.1
+  redisImage: ecr-public.aws.com/docker/library/redis:8.6.4-alpine
+  imagePullPolicy: IfNotPresent
+
+  # Exposure (Ingress host, argocd-cm url, notifications argocdUrl)
+  domain: argocd.example.com
+
+  # Sizing
+  serverReplicas: "1"
+  repoServerReplicas: "1"
+  applicationSetReplicas: "1"
+  controllerReplicas: "1"
+
+  # Behaviour (argocd-cm and argocd-cmd-params-cm)
+  logLevel: info
+  logFormat: text
+  adminEnabled: "true"
+  execEnabled: "false"
+  statusBadgeEnabled: "false"
+  reconciliationTimeout: 120s

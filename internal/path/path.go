@@ -99,15 +99,15 @@ func Parse(s string) (Path, error) {
 	p := Path{}
 	i := 0
 	for i < len(s) {
-		switch c := s[i]; {
-		case c == '[':
+		switch s[i] {
+		case '[':
 			seg, next, err := parseBracket(s, i)
 			if err != nil {
 				return nil, err
 			}
 			p = append(p, seg)
 			i = next
-		case c == '.':
+		case '.':
 			if i == 0 {
 				return nil, parseErr(s, i, "path cannot start with '.'")
 			}

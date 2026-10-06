@@ -25,26 +25,26 @@ func (e Error) String() string {
 	return fmt.Sprintf("%s %s (%s): %s", e.ID, e.Path, e.Location, e.Msg)
 }
 
-// Context gives rules access to the engine state.
-type Context struct {
+// State gives rules access to the engine state.
+type State struct {
 	// IsPending reports whether the value at p (or any of its ancestors or descendants) is still pending.
 	IsPending func(o *object.Object, p path.Path) bool
 }
 
-func (c *Context) pending(o *object.Object, p path.Path) bool {
+func (c *State) pending(o *object.Object, p path.Path) bool {
 	return c != nil && c.IsPending != nil && c.IsPending(o, p)
 }
 
 // Rule checks one object.
 type Rule interface {
 	Name() string
-	Check(ctx *Context, o *object.Object) []Error
+	Check(ctx *State, o *object.Object) []Error
 }
 
 // GlobalRule checks all objects at once.
 type GlobalRule interface {
 	Name() string
-	CheckAll(ctx *Context, objs []*object.Object) []Error
+	CheckAll(ctx *State, objs []*object.Object) []Error
 }
 
 // Rules returns the per-object rules in their fixed execution order.
@@ -58,7 +58,7 @@ func GlobalRules() []GlobalRule {
 }
 
 // Run applies every rule and returns all errors, in object order then rule order.
-func Run(ctx *Context, objs []*object.Object) []Error {
+func Run(ctx *State, objs []*object.Object) []Error {
 	var errs []Error
 	rules := Rules()
 	for _, o := range objs {

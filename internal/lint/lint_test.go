@@ -65,7 +65,7 @@ var _ = Describe("rules", func() {
 
 	It("skips pending values", func() {
 		o := obj(header + "  name: a\n  labels:\n    x: '{{ dict }}'\n")
-		ctx := &Context{IsPending: func(_ *object.Object, p path.Path) bool {
+		ctx := &State{IsPending: func(_ *object.Object, p path.Path) bool {
 			return p.Overlaps(path.MustParse("metadata.labels.x"))
 		}}
 		Expect(Run(ctx, []*object.Object{o})).To(BeEmpty())

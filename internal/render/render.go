@@ -24,9 +24,15 @@ type Options struct {
 	KeepLocal   bool // emit local objects
 }
 
-// Annotate writes the ktpl.io/rendered annotation on every object that has rendered fields.
+// Annotate writes the ktpl annotations: ktpl.io/sources on every object merged from several input folders
+// (JSON list, application order) and ktpl.io/rendered on every object that has rendered fields.
 func Annotate(res *engine.Result) error {
 	for _, o := range res.Objects {
+		if len(o.Sources) > 1 {
+			if err := writeSources(o); err != nil {
+				return err
+			}
+		}
 		fields := res.RenderedPaths(o)
 		if len(fields) == 0 {
 			continue
@@ -48,6 +54,19 @@ func Annotate(res *engine.Result) error {
 		b.WriteByte('}')
 		setAnnotation(o, object.AnnotationRendered, b.String())
 	}
+	return nil
+}
+
+func writeSources(o *object.Object) error {
+	items := make([]string, len(o.Sources))
+	for i, s := range o.Sources {
+		v, err := jsonString(s)
+		if err != nil {
+			return err
+		}
+		items[i] = v
+	}
+	setAnnotation(o, object.AnnotationSources, "["+strings.Join(items, ",")+"]")
 	return nil
 }
 
@@ -112,6 +131,7 @@ func EncodeObject(o *object.Object) (string, error) {
 // WriteDir writes each object to dir/<path of its source file relative to its input folder>.
 // Objects from the same source file are written to the same file, in order.
 func WriteDir(dir string, objs []*object.Object) error {
+	cleanDir := filepath.Clean(dir)
 	var order []string
 	groups := map[string][]*object.Object{}
 	for _, o := range objs {
@@ -122,15 +142,20 @@ func WriteDir(dir string, objs []*object.Object) error {
 		groups[rel] = append(groups[rel], o)
 	}
 	for _, rel := range order {
-		target := filepath.Join(dir, filepath.FromSlash(rel))
-		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+		target := filepath.Join(cleanDir, filepath.FromSlash(rel))
+		cleanTarget := filepath.Clean(target)
+		relCheck, err := filepath.Rel(cleanDir, cleanTarget)
+		if err != nil || strings.HasPrefix(relCheck, "..") || filepath.IsAbs(relCheck) {
+			return fmt.Errorf("security: path %q escapes target directory %q", rel, dir)
+		}
+		if err := os.MkdirAll(filepath.Dir(cleanTarget), 0o755); err != nil {
 			return err
 		}
 		var b bytes.Buffer
 		if err := Encode(&b, groups[rel]); err != nil {
 			return err
 		}
-		if err := os.WriteFile(target, b.Bytes(), 0o644); err != nil {
+		if err := os.WriteFile(cleanTarget, b.Bytes(), 0o644); err != nil {
 			return err
 		}
 	}

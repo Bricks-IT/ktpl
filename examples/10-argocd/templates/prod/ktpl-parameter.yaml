@@ -1,0 +1,12 @@
+# Production values: merged onto base/ktpl-parameter.yaml (JSON Merge Patch, this folder wins).
+# Only the keys that differ from base are listed; every manifest of base picks them up through `ref`.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ktpl-parameter
+  namespace: argocd
+data:
+  domain: argocd.prod.example.com
+  logFormat: json
+  serverReplicas: "2"
+  repoServerReplicas: "2"

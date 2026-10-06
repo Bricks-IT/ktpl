@@ -23,7 +23,7 @@ type structureRule struct{}
 
 func (structureRule) Name() string { return "structure" }
 
-func (structureRule) Check(ctx *Context, o *object.Object) []Error {
+func (structureRule) Check(ctx *State, o *object.Object) []Error {
 	var errs []Error
 	body := o.Body()
 	for _, key := range []string{"apiVersion", "kind"} {
@@ -53,7 +53,7 @@ type nameRule struct{}
 
 func (nameRule) Name() string { return "name" }
 
-func (nameRule) Check(ctx *Context, o *object.Object) []Error {
+func (nameRule) Check(ctx *State, o *object.Object) []Error {
 	var errs []Error
 	meta := node.MapValue(o.Body(), "metadata")
 	if name := node.MapValue(meta, "name"); node.IsString(name) && name.Value != "" && !ctx.pending(o, pName) {
@@ -78,7 +78,7 @@ type labelsRule struct{}
 
 func (labelsRule) Name() string { return "labels" }
 
-func (labelsRule) Check(ctx *Context, o *object.Object) []Error {
+func (labelsRule) Check(ctx *State, o *object.Object) []Error {
 	return checkStringMap(ctx, o, pLabels, "label", true)
 }
 
@@ -87,11 +87,11 @@ type annotationsRule struct{}
 
 func (annotationsRule) Name() string { return "annotations" }
 
-func (annotationsRule) Check(ctx *Context, o *object.Object) []Error {
+func (annotationsRule) Check(ctx *State, o *object.Object) []Error {
 	return checkStringMap(ctx, o, pAnnotations, "annotation", false)
 }
 
-func checkStringMap(ctx *Context, o *object.Object, p path.Path, what string, labelValues bool) []Error {
+func checkStringMap(ctx *State, o *object.Object, p path.Path, what string, labelValues bool) []Error {
 	m, err := path.Get(o.Body(), p)
 	if err != nil || node.IsNull(m) || ctx.pending(o, p) && m.Kind != yaml.MappingNode {
 		return nil
@@ -127,7 +127,7 @@ type roundTripRule struct{}
 
 func (roundTripRule) Name() string { return "yaml" }
 
-func (roundTripRule) Check(_ *Context, o *object.Object) []Error {
+func (roundTripRule) Check(_ *State, o *object.Object) []Error {
 	out, err := yaml.Marshal(o.Doc)
 	if err == nil {
 		var back yaml.Node
@@ -144,7 +144,7 @@ type duplicateRule struct{}
 
 func (duplicateRule) Name() string { return "duplicate" }
 
-func (duplicateRule) CheckAll(ctx *Context, objs []*object.Object) []Error {
+func (duplicateRule) CheckAll(ctx *State, objs []*object.Object) []Error {
 	var errs []Error
 	seen := map[string]*object.Object{}
 	for _, o := range objs {

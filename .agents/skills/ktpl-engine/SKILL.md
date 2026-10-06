@@ -41,5 +41,5 @@ pending left -> max-iterations error
 
 ```bash
 go test -race ./internal/engine/... ./internal/tmpl/...
-go test ./internal/cli -run TestGolden
+go test ./internal/cli -ginkgo.label-filter=golden
 ```
