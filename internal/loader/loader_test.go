@@ -1,13 +1,17 @@
 package loader
 
 import (
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/google/go-containerregistry/pkg/registry"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+
+	"github.com/bricks-it/ktpl/internal/oci"
 )
 
 func TestLoader(t *testing.T) {
@@ -95,5 +99,36 @@ var _ = Describe("Load", func() {
 	It("fails when stdin is nil and '-' is requested", func() {
 		_, err := Load([]string{"-"}, Options{LeftDelim: "{{"})
 		Expect(err).To(MatchError(ContainSubstring("stdin is nil")))
+	})
+
+	It("loads manifests directly from an OCI .tar archive", func() {
+		write(dir, "manifest.yaml", "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: from-tar\n")
+		tarPath := filepath.Join(GinkgoT().TempDir(), "package.tar")
+		Expect(oci.Package(dir, tarPath, "")).To(Succeed())
+
+		objs, err := Load([]string{tarPath}, Options{LeftDelim: "{{"})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(objs).To(HaveLen(1))
+		Expect(objs[0].ID.Name).To(Equal("from-tar"))
+		Expect(objs[0].File).To(Equal(filepath.ToSlash(tarPath) + "/manifest.yaml"))
+	})
+
+	It("loads manifests directly from an oci:// URL", func() {
+		write(dir, "manifest.yaml", "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: from-oci\n")
+		srv := httptest.NewServer(registry.New())
+		defer srv.Close()
+
+		host := srv.Listener.Addr().String()
+		ref := host + "/test/remote:v1"
+		Expect(oci.Push(dir, ref, true)).To(Succeed())
+
+		ociURL := "oci://" + ref
+		objs, err := Load([]string{ociURL}, Options{LeftDelim: "{{", Insecure: true})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(objs).To(HaveLen(1))
+		Expect(objs[0].ID.Name).To(Equal("from-oci"))
+		Expect(objs[0].Root).To(Equal(ociURL))
+		Expect(objs[0].File).To(Equal(ociURL + "/manifest.yaml"))
+		Expect(objs[0].Rel()).To(Equal("manifest.yaml"))
 	})
 })

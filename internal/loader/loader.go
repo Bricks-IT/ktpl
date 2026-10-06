@@ -10,26 +10,46 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/google/go-containerregistry/pkg/v1/tarball"
 	"go.yaml.in/yaml/v3"
 
 	"github.com/bricks-it/ktpl/internal/node"
 	"github.com/bricks-it/ktpl/internal/object"
+	"github.com/bricks-it/ktpl/internal/oci"
 )
 
 // Options configures the loader.
 type Options struct {
 	LeftDelim string
 	Stdin     io.Reader
+	Insecure  bool
 }
 
 // Load reads every .yaml, .yml and .json file below each root (recursively, sorted by path) and
 // returns the objects in command-line order, then path order, then document order.
-// A root may also be a single file, or "-" to read from stdin.
+// A root may be a folder, a single file, an OCI URL (oci://...), an OCI .tar archive, or "-" to read from stdin.
 func Load(roots []string, opts Options) ([]*object.Object, error) {
 	var objs []*object.Object
 	for i, root := range roots {
 		if root == "-" {
 			docs, err := loadReader(opts.Stdin, "<stdin>", "-", i, opts)
+			if err != nil {
+				return nil, err
+			}
+			objs = append(objs, docs...)
+			continue
+		}
+		if strings.HasPrefix(root, "oci://") {
+			docs, err := loadOCI(root, i, opts)
+			if err != nil {
+				return nil, err
+			}
+			objs = append(objs, docs...)
+			continue
+		}
+		ext := strings.ToLower(filepath.Ext(root))
+		if ext == ".tar" || ext == ".tgz" {
+			docs, err := loadArchive(root, i, opts)
 			if err != nil {
 				return nil, err
 			}
@@ -146,4 +166,72 @@ func checkDuplicateKeys(n *yaml.Node, file string) error {
 		}
 	})
 	return err
+}
+
+func loadArchive(tarPath string, folder int, opts Options) ([]*object.Object, error) {
+	img, err := tarball.ImageFromPath(tarPath, nil)
+	if err != nil {
+		return nil, fmt.Errorf("loading OCI package %s: %w", tarPath, err)
+	}
+	tmpDir, err := os.MkdirTemp("", "ktpl-oci-*")
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = os.RemoveAll(tmpDir) }()
+
+	if err := oci.ExtractImage(img, tmpDir); err != nil {
+		return nil, fmt.Errorf("extracting OCI package %s: %w", tarPath, err)
+	}
+	files, err := listFiles(tmpDir)
+	if err != nil {
+		return nil, err
+	}
+	var objs []*object.Object
+	for _, f := range files {
+		docs, err := loadFile(f, tmpDir, folder, opts)
+		if err != nil {
+			return nil, err
+		}
+		for _, o := range docs {
+			rel := o.Rel()
+			o.Root = tarPath
+			o.File = strings.TrimSuffix(tarPath, "/") + "/" + rel
+		}
+		objs = append(objs, docs...)
+	}
+	return objs, nil
+}
+
+func loadOCI(root string, folder int, opts Options) ([]*object.Object, error) {
+	tmpDir, err := os.MkdirTemp("", "ktpl-oci-pull-*")
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = os.RemoveAll(tmpDir) }()
+
+	pullOpts := oci.PullOptions{
+		Insecure: opts.Insecure,
+	}
+	if err := oci.Pull(root, tmpDir, pullOpts); err != nil {
+		return nil, fmt.Errorf("loading OCI artifact %s: %w", root, err)
+	}
+
+	files, err := listFiles(tmpDir)
+	if err != nil {
+		return nil, err
+	}
+	var objs []*object.Object
+	for _, f := range files {
+		docs, err := loadFile(f, tmpDir, folder, opts)
+		if err != nil {
+			return nil, err
+		}
+		for _, o := range docs {
+			rel := o.Rel()
+			o.Root = root
+			o.File = strings.TrimSuffix(root, "/") + "/" + rel
+		}
+		objs = append(objs, docs...)
+	}
+	return objs, nil
 }

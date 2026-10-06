@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"slices"
+	"strings"
 
 	"go.yaml.in/yaml/v3"
 
@@ -55,6 +56,9 @@ func Merge(objs []*object.Object, leftDelim string) ([]*object.Object, error) {
 
 // folderName normalizes an input folder as typed on the command line ("templates/prod/" -> "templates/prod").
 func folderName(root string) string {
+	if strings.HasPrefix(root, "oci://") {
+		return strings.TrimSuffix(root, "/")
+	}
 	return filepath.ToSlash(filepath.Clean(filepath.FromSlash(root)))
 }
 

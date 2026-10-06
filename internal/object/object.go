@@ -81,6 +81,12 @@ func (o *Object) Line() int { return o.Body().Line }
 
 // Rel returns the path of the source file relative to its input folder.
 func (o *Object) Rel() string {
+	if strings.HasPrefix(o.File, o.Root+"/") {
+		rel := strings.TrimPrefix(o.File, o.Root+"/")
+		if !strings.HasPrefix(rel, "..") && !strings.Contains(rel, "/../") && !strings.HasSuffix(rel, "/..") {
+			return rel
+		}
+	}
 	rel, err := filepath.Rel(filepath.FromSlash(o.Root), filepath.FromSlash(o.File))
 	if err != nil || o.Root == o.File || strings.HasPrefix(rel, "..") || filepath.IsAbs(rel) {
 		return filepath.Base(o.File)

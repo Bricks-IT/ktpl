@@ -282,14 +282,51 @@ Error: 1 pending field(s) after 2 iteration(s) (max-iterations=2):
 ```
 $ ktpl templates
 Error: iteration 1: lint failed, 1 error(s):
-  demo/ConfigMap/web metadata.labels.settings (templates/objects.yaml:16): label value must be a string, got map
 ```
+
+## OCI Artifacts (Packaging & Distribution)
+
+ktpl can package template folders as standard OCI artifacts, push them to an OCI registry, and pull or render them directly.
+Remote OCI artifacts (`oci://...`) can be placed on **any layer** in `ktpl`: as the base layer, an overlay layer, or combined with other OCI artifacts and local folders. The OCI artifact itself is always fetched and extracted entirely.
+
+```bash
+# 1. Package a folder into a standard OCI image archive (.tar)
+ktpl package manifests/ -o app.tar --tag my-org/app:v1.0.0
+
+# 2. Push an artifact archive (or directly a folder) to a remote registry
+ktpl push app.tar ghcr.io/my-org/app:v1.0.0
+ktpl push manifests/ ghcr.io/my-org/app:v1.0.0
+
+# 3. Pull an artifact from a registry and extract its templates
+ktpl pull ghcr.io/my-org/app:v1.0.0 -o ./downloaded-templates
+
+# 4. Render directly from a remote OCI artifact on any layer:
+# As a base layer with a local overlay:
+ktpl oci://ghcr.io/my-org/app:v1.0.0 prod/
+
+# As an overlay on top of local base templates:
+ktpl base/ oci://ghcr.io/my-org/app-patch:v1.0.0
+
+# Multiple OCI artifacts combined with local environments:
+ktpl oci://ghcr.io/my-org/base:v1.0.0 oci://ghcr.io/my-org/monitoring:v1.0.0 prod/
+
+# Or from local packaged archives (.tar):
+ktpl app.tar overlays/prod/
+```
+
+Authentication uses standard Docker credentials (`~/.docker/config.json`).
+For local or insecure registries, pass `--insecure`.
 
 ## CLI reference
 
 ```
-ktpl [flags] <folder>...
+ktpl [flags] <folder|archive|oci://...|->...
+ktpl package <folder> [-o <out.tar>] [-t <tag>]
+ktpl push <package|folder> <reference> [--insecure]
+ktpl pull <reference> [-o <destination>] [--insecure]
+```
 
+```
   -i, --max-iterations int   maximum number of iterations (default 5)
   -s, --step                 interactive mode, pause after each iteration
       --stop-after int       stop after N iterations and emit the partial state
@@ -298,6 +335,7 @@ ktpl [flags] <folder>...
       --no-annotations       do not write the ktpl.io/rendered and ktpl.io/sources annotations
       --keep-local           also emit local objects
       --hermetic             forbid non-deterministic template functions
+      --insecure             allow plain HTTP and skip TLS verification for OCI registries
       --left-delim string    left template delimiter (default "{{")
       --right-delim string   right template delimiter (default "}}")
       --version              print version and exit

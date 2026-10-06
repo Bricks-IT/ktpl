@@ -2,12 +2,16 @@ package cli
 
 import (
 	"bytes"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 
+	"github.com/google/go-containerregistry/pkg/registry"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+
+	"github.com/bricks-it/ktpl/internal/oci"
 )
 
 const chain = `apiVersion: v1
@@ -173,6 +177,89 @@ var _ = Describe("Run", func() {
 		r := run(chain, "--step", "-")
 		Expect(r.code).To(Equal(ExitUsage), r.stderr)
 		Expect(r.stderr).To(ContainSubstring("--step cannot be used when reading from stdin"))
+	})
+
+	Describe("OCI subcommands", func() {
+		It("packages a template folder into an OCI archive with ktpl package", func() {
+			outTar := filepath.Join(GinkgoT().TempDir(), "pkg.tar")
+			r := run("", "package", dir, "-o", outTar)
+			Expect(r.code).To(Equal(ExitOK), r.stderr)
+			Expect(outTar).To(BeAnExistingFile())
+		})
+
+		It("shows usage errors when arguments are missing", func() {
+			Expect(run("", "package").code).To(Equal(ExitUsage))
+			Expect(run("", "push").code).To(Equal(ExitUsage))
+			Expect(run("", "pull").code).To(Equal(ExitUsage))
+		})
+
+		It("shows help for subcommands", func() {
+			r := run("", "package", "--help")
+			Expect(r.code).To(Equal(ExitOK))
+			Expect(r.stdout).To(ContainSubstring("Package a template folder into an OCI artifact archive"))
+
+			r = run("", "help", "push")
+			Expect(r.code).To(Equal(ExitOK))
+			Expect(r.stdout).To(ContainSubstring("Push an OCI artifact archive or template folder"))
+		})
+
+		It("pulls an OCI artifact using ktpl pull", func() {
+			srv := httptest.NewServer(registry.New())
+			defer srv.Close()
+
+			host := srv.Listener.Addr().String()
+			ref := host + "/test/cli-pull:v1"
+			Expect(oci.Push(dir, ref, true)).To(Succeed())
+
+			destDir := filepath.Join(GinkgoT().TempDir(), "pulled")
+			r := run("", "pull", ref, "-o", destDir, "--insecure")
+			Expect(r.code).To(Equal(ExitOK), r.stderr)
+			Expect(filepath.Join(destDir, "chain.yaml")).To(BeAnExistingFile())
+		})
+
+		It("renders an OCI artifact as base layer with local overlay: ktpl oci://... prod/", func() {
+			srv := httptest.NewServer(registry.New())
+			defer srv.Close()
+
+			host := srv.Listener.Addr().String()
+			ref := "oci://" + host + "/test/base:v1"
+
+			// Base manifests in baseDir
+			baseDir := GinkgoT().TempDir()
+			Expect(os.WriteFile(filepath.Join(baseDir, "app.yaml"), []byte("apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: app\ndata:\n  env: dev\n  tier: frontend\n"), 0o644)).To(Succeed())
+			Expect(oci.Push(baseDir, host+"/test/base:v1", true)).To(Succeed())
+
+			// Overlay manifests in prodDir
+			prodDir := GinkgoT().TempDir()
+			Expect(os.WriteFile(filepath.Join(prodDir, "app.yaml"), []byte("apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: app\ndata:\n  env: prod\n"), 0o644)).To(Succeed())
+
+			r := run("", "--insecure", ref, prodDir)
+			Expect(r.code).To(Equal(ExitOK), r.stderr)
+			Expect(r.stdout).To(ContainSubstring("env: prod"))
+			Expect(r.stdout).To(ContainSubstring("tier: frontend"))
+			Expect(r.stdout).To(ContainSubstring(`ktpl.io/sources: '["` + ref + `","` + prodDir + `"]'`))
+		})
+
+		It("renders an OCI artifact as overlay on top of local base: ktpl base/ oci://...", func() {
+			srv := httptest.NewServer(registry.New())
+			defer srv.Close()
+
+			host := srv.Listener.Addr().String()
+			ref := "oci://" + host + "/test/patch:v1"
+
+			baseDir := GinkgoT().TempDir()
+			Expect(os.WriteFile(filepath.Join(baseDir, "app.yaml"), []byte("apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: app\ndata:\n  env: dev\n  tier: frontend\n"), 0o644)).To(Succeed())
+
+			patchDir := GinkgoT().TempDir()
+			Expect(os.WriteFile(filepath.Join(patchDir, "app.yaml"), []byte("apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: app\ndata:\n  env: staging\n"), 0o644)).To(Succeed())
+			Expect(oci.Push(patchDir, host+"/test/patch:v1", true)).To(Succeed())
+
+			r := run("", "--insecure", baseDir, ref)
+			Expect(r.code).To(Equal(ExitOK), r.stderr)
+			Expect(r.stdout).To(ContainSubstring("env: staging"))
+			Expect(r.stdout).To(ContainSubstring("tier: frontend"))
+			Expect(r.stdout).To(ContainSubstring(`ktpl.io/sources: '["` + baseDir + `","` + ref + `"]'`))
+		})
 	})
 })
 
