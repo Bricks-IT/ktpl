@@ -165,6 +165,31 @@ metadata:
 - Once merged, the `<<` key is removed from the emitted YAML output.
 - Deferral works transparently: if the referenced object's labels contain unresolved templates, the merge key waits for the next iteration.
 
+### Splicing sequences & arrays (`- <<:`)
+
+In lists (such as `containers`, `env`, or `volumes`), the sequence spread marker `- <<:` splices the elements of the referenced sequence in place:
+
+```yaml
+spec:
+  template:
+    spec:
+      containers:
+        - name: app
+          image: myorg/app:v1.0.0
+          env:
+            - name: PORT
+              value: "8080"
+        # Slices sidecar containers right into the containers list:
+        - <<: '{{ ref "infra/deployment/base-blueprint" "spec.template.spec.containers" }}'
+        - name: logger
+          image: fluent/fluent-bit:2.2.0
+```
+
+- If `ref` returns a sequence, all its items are unpacked and inserted in place.
+- If `ref` returns a single item (mapping or scalar), that item is inserted at that position.
+- Relative element order is strictly preserved.
+- The `- <<:` marker is removed from the emitted output.
+
 ## Annotations
 
 ### Written by ktpl
@@ -398,6 +423,7 @@ stdout (or `rendered/error.txt` the expected stderr), and an optional `args` fil
 | [10-argocd](examples/10-argocd) | Real app: Argo CD chart converted to ktpl, `ktpl-parameter` ConfigMap, prod overlay |
 | [11-name-affixes](examples/11-name-affixes) | `--name-prefix` and `--name-suffix` with 63-char validation |
 | [12-merge-labels](examples/12-merge-labels) | Merging common labels with YAML merge key `<<` and `ref` |
+| [13-merge-arrays](examples/13-merge-arrays) | Splicing arrays and sidecar containers with `- <<:` and `ref` |
 
 ## Development
 

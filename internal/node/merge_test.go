@@ -95,4 +95,61 @@ labels:
 
 		Expect(node.ExpandMergeKeys(&doc)).To(MatchError(ContainSubstring("must be a mapping or sequence of mappings")))
 	})
+
+	It("splices sequence items in place with - <<:", func() {
+		input := `
+containers:
+  - name: app
+  - <<:
+      - name: sidecar1
+      - name: sidecar2
+  - name: extra
+`
+		var doc yaml.Node
+		Expect(yaml.Unmarshal([]byte(input), &doc)).To(Succeed())
+
+		Expect(node.ExpandMergeKeys(&doc)).To(Succeed())
+
+		containers := node.MapValue(doc.Content[0], "containers")
+		Expect(containers).NotTo(BeNil())
+		Expect(containers.Content).To(HaveLen(4))
+		Expect(node.MapValue(containers.Content[0], "name").Value).To(Equal("app"))
+		Expect(node.MapValue(containers.Content[1], "name").Value).To(Equal("sidecar1"))
+		Expect(node.MapValue(containers.Content[2], "name").Value).To(Equal("sidecar2"))
+		Expect(node.MapValue(containers.Content[3], "name").Value).To(Equal("extra"))
+	})
+
+	It("splices a single mapping item in place with - <<:", func() {
+		input := `
+containers:
+  - name: app
+  - <<:
+      name: sidecar
+`
+		var doc yaml.Node
+		Expect(yaml.Unmarshal([]byte(input), &doc)).To(Succeed())
+
+		Expect(node.ExpandMergeKeys(&doc)).To(Succeed())
+
+		containers := node.MapValue(doc.Content[0], "containers")
+		Expect(containers.Content).To(HaveLen(2))
+		Expect(node.MapValue(containers.Content[0], "name").Value).To(Equal("app"))
+		Expect(node.MapValue(containers.Content[1], "name").Value).To(Equal("sidecar"))
+	})
+
+	It("ignores - <<: with pending template in sequence", func() {
+		input := `
+containers:
+  - name: app
+  - <<: '{{ ref "infra/dep/sidecars" "spec.containers" }}'
+`
+		var doc yaml.Node
+		Expect(yaml.Unmarshal([]byte(input), &doc)).To(Succeed())
+
+		Expect(node.ExpandMergeKeys(&doc)).To(Succeed())
+
+		containers := node.MapValue(doc.Content[0], "containers")
+		Expect(containers.Content).To(HaveLen(2))
+		Expect(node.MapIndex(containers.Content[1], "<<")).To(Equal(0))
+	})
 })

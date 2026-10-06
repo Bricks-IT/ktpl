@@ -320,6 +320,49 @@ data:
 		Expect(node.MapValue(appLabels, "app.kubernetes.io/version").Value).To(Equal("v1.2.3"))
 	})
 
+	It("splices sequence items across objects using - <<: and ref", func() {
+		src := `apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: base
+  namespace: demo
+spec:
+  template:
+    spec:
+      containers:
+        - name: sidecar1
+          image: sidecar1:v1
+        - name: sidecar2
+          image: sidecar2:v1
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: app
+  namespace: demo
+spec:
+  template:
+    spec:
+      containers:
+        - name: main
+          image: main:v1
+        - <<: '{{ ref "demo/deployment/base" "spec.template.spec.containers" }}'
+        - name: metrics
+          image: metrics:v1
+`
+		objs := load(src)
+		res, err := Run(objs, opts())
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res.Complete).To(BeTrue())
+
+		containers := get(objs[1], "spec.template.spec.containers")
+		Expect(containers.Content).To(HaveLen(4))
+		Expect(node.MapValue(containers.Content[0], "name").Value).To(Equal("main"))
+		Expect(node.MapValue(containers.Content[1], "name").Value).To(Equal("sidecar1"))
+		Expect(node.MapValue(containers.Content[2], "name").Value).To(Equal("sidecar2"))
+		Expect(node.MapValue(containers.Content[3], "name").Value).To(Equal("metrics"))
+	})
+
 	It("rejects an invalid maximum", func() {
 		_, err := Run(nil, Options{})
 		Expect(err).To(MatchError(ContainSubstring("max-iterations must be >= 1")))

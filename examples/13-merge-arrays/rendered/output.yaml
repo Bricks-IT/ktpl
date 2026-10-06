@@ -1,0 +1,20 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: app
+  namespace: demo
+  annotations:
+    ktpl.io/rendered: '{"spec.template.spec.containers[1].<<":1}'
+spec:
+  template:
+    spec:
+      containers:
+        - name: app
+          image: myorg/app:v1.0.0
+          env:
+            - name: PORT
+              value: "8080"
+        - name: telemetry
+          image: otel/opentelemetry-collector:0.90.0
+        - name: logger
+          image: fluent/fluent-bit:2.2.0

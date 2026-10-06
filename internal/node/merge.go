@@ -7,12 +7,21 @@ import (
 	"go.yaml.in/yaml/v3"
 )
 
-// ExpandMergeKeys recursively processes n, expanding any YAML merge key ("<<") found in mapping nodes.
-// If "<<" maps to a MappingNode, its key-value pairs are merged into the parent mapping,
-// skipping any keys already explicitly defined in the parent mapping.
-// If "<<" maps to a SequenceNode of MappingNodes, each mapping is merged in order.
-// If "<<" maps to a ScalarNode, it is left unexpanded (as it may be a pending template).
-// When expansion occurs, the "<<" key and its value are removed from the parent mapping.
+// ExpandMergeKeys recursively processes n, expanding any YAML merge key ("<<") found in mapping nodes
+// or sequence nodes.
+// For mappings:
+//   - If "<<" maps to a MappingNode, its key-value pairs are merged into the parent mapping,
+//     skipping any keys already explicitly defined in the parent mapping.
+//   - If "<<" maps to a SequenceNode of MappingNodes, each mapping is merged in order.
+//   - If "<<" maps to a pending template scalar, it is left unexpanded for next iterations.
+//   - When expansion occurs, the "<<" key and its value are removed from the parent mapping.
+//
+// For sequences:
+// - If an item is a single-key mapping `- <<: <value>`, the value is spliced in place into the sequence.
+// - If <value> is a SequenceNode, all its elements are unpacked in order.
+// - If <value> is a MappingNode or non-null ScalarNode, it is unpacked as a single element.
+// - If <value> is a pending template scalar, it is left unexpanded for next iterations.
+// - When expansion occurs, the `- <<:` item is replaced by the unpacked elements.
 func ExpandMergeKeys(n *yaml.Node) error {
 	if n == nil {
 		return nil
@@ -25,11 +34,43 @@ func ExpandMergeKeys(n *yaml.Node) error {
 			}
 		}
 	case yaml.SequenceNode:
-		for _, c := range n.Content {
-			if err := ExpandMergeKeys(c); err != nil {
-				return err
+		var newContent []*yaml.Node
+		changed := false
+		for _, item := range n.Content {
+			val, isMerge := isSequenceMergeItem(item)
+			if !isMerge {
+				if err := ExpandMergeKeys(item); err != nil {
+					return err
+				}
+				newContent = append(newContent, item)
+				continue
+			}
+			if IsString(val) && strings.Contains(val.Value, "{{") {
+				newContent = append(newContent, item)
+				continue
+			}
+			changed = true
+			switch val.Kind {
+			case yaml.SequenceNode:
+				for _, elem := range val.Content {
+					if err := ExpandMergeKeys(elem); err != nil {
+						return err
+					}
+					newContent = append(newContent, DeepCopy(elem))
+				}
+			case yaml.MappingNode, yaml.ScalarNode:
+				if val.ShortTag() != "!!null" {
+					if err := ExpandMergeKeys(val); err != nil {
+						return err
+					}
+					newContent = append(newContent, DeepCopy(val))
+				}
 			}
 		}
+		if changed {
+			n.Content = newContent
+		}
+
 	case yaml.MappingNode:
 		for i := 0; i+1 < len(n.Content); i += 2 {
 			if err := ExpandMergeKeys(n.Content[i+1]); err != nil {
@@ -93,4 +134,14 @@ func ExpandMergeKeys(n *yaml.Node) error {
 		n.Content = newContent
 	}
 	return nil
+}
+
+func isSequenceMergeItem(item *yaml.Node) (*yaml.Node, bool) {
+	if item == nil || item.Kind != yaml.MappingNode {
+		return nil, false
+	}
+	if len(item.Content) == 2 && item.Content[0].Value == "<<" {
+		return item.Content[1], true
+	}
+	return nil, false
 }
