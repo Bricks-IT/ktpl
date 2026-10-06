@@ -25,6 +25,7 @@ Triggers: push to `main`, pull requests. Jobs (Go version from `go.mod` via `act
 | `lint` | `golangci/golangci-lint-action` with golangci-lint v2 and `.golangci.yml` |
 | `test` | `go test -race -coverprofile=coverage.out ./...`, coverage summary in job summary |
 | `build` | matrix `linux,darwin,windows` x `amd64,arm64`, `CGO_ENABLED=0 go build ./cmd/ktpl` |
+| `security` | `aquasecurity/trivy-action` scanning repository filesystem and dependencies (CRITICAL/HIGH) |
 
 ## Release (`.github/workflows/release.yml`)
 
