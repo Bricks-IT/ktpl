@@ -1,6 +1,8 @@
 /bin/
 /dist/
 /coverage.out
+/coverage.html
+*.out
 /ktpl
 *.test
 testdata/fuzz/

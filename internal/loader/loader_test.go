@@ -131,4 +131,14 @@ var _ = Describe("Load", func() {
 		Expect(objs[0].File).To(Equal(ociURL + "/manifest.yaml"))
 		Expect(objs[0].Rel()).To(Equal("manifest.yaml"))
 	})
+
+	It("fails gracefully when archive or OCI artifact is invalid", func() {
+		badTar := filepath.Join(dir, "bad.tar")
+		Expect(os.WriteFile(badTar, []byte("not a tar file"), 0o644)).To(Succeed())
+		_, err := Load([]string{badTar}, Options{LeftDelim: "{{"})
+		Expect(err).To(MatchError(ContainSubstring("loading OCI package")))
+
+		_, err = Load([]string{"oci://invalid:reference"}, Options{LeftDelim: "{{"})
+		Expect(err).To(MatchError(ContainSubstring("loading OCI artifact")))
+	})
 })

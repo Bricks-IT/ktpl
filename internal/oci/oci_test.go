@@ -12,6 +12,7 @@ import (
 
 	"github.com/google/go-containerregistry/pkg/name"
 	"github.com/google/go-containerregistry/pkg/registry"
+	"github.com/google/go-containerregistry/pkg/v1/empty"
 	"github.com/google/go-containerregistry/pkg/v1/tarball"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -158,5 +159,88 @@ var _ = Describe("OCI", func() {
 		Expect(oci.ExtractImage(img, destDir)).To(Succeed())
 
 		Expect(filepath.Join(destDir, "dangling-symlink")).NotTo(BeAnExistingFile())
+	})
+
+	It("parses OCI URLs correctly", func() {
+		ref, sel := oci.ParseOCIURL("oci://ghcr.io/org/repo:v1")
+		Expect(ref).To(Equal("ghcr.io/org/repo:v1"))
+		Expect(sel).To(BeEmpty())
+
+		ref, sel = oci.ParseOCIURL("oci://ghcr.io/org/repo:v1#layer=0")
+		Expect(ref).To(Equal("ghcr.io/org/repo:v1"))
+		Expect(sel).To(Equal("layer=0"))
+
+		ref, sel = oci.ParseOCIURL("oci://ghcr.io/org/repo:v1?query=1")
+		Expect(ref).To(Equal("ghcr.io/org/repo:v1"))
+		Expect(sel).To(Equal("query=1"))
+
+		ref, sel = oci.ParseOCIURL("ghcr.io/org/repo:v1")
+		Expect(ref).To(Equal("ghcr.io/org/repo:v1"))
+		Expect(sel).To(BeEmpty())
+	})
+
+	It("returns error when archiving non-directory or nonexistent path", func() {
+		var buf bytes.Buffer
+		filePath := filepath.Join(srcDir, "app.yaml")
+		Expect(oci.ArchiveDir(filePath, &buf)).To(MatchError(ContainSubstring("is not a directory")))
+
+		Expect(oci.ArchiveDir(filepath.Join(srcDir, "notfound"), &buf)).To(HaveOccurred())
+	})
+
+	It("handles Package defaults and tag validation", func() {
+		// Invalid tag
+		Expect(oci.Package(srcDir, "out.tar", "INVALID TAG WITH SPACES")).To(MatchError(ContainSubstring("invalid tag")))
+
+		// Empty outPath and empty tagRef
+		cwd, err := os.Getwd()
+		Expect(err).NotTo(HaveOccurred())
+		tmp := GinkgoT().TempDir()
+		Expect(os.Chdir(tmp)).To(Succeed())
+		defer func() { _ = os.Chdir(cwd) }()
+
+		dirToPack := filepath.Join(tmp, "mydir")
+		Expect(os.MkdirAll(dirToPack, 0o755)).To(Succeed())
+		Expect(os.WriteFile(filepath.Join(dirToPack, "f.txt"), []byte("hi"), 0o644)).To(Succeed())
+
+		Expect(oci.Package(dirToPack, "", "")).To(Succeed())
+		Expect(filepath.Join(tmp, "mydir.tar")).To(BeAnExistingFile())
+	})
+
+	It("fails ExtractImage when artifact has no layers", func() {
+		destDir := filepath.Join(GinkgoT().TempDir(), "extracted")
+		err := oci.ExtractImage(empty.Image, destDir)
+		Expect(err).To(MatchError("artifact has no layers"))
+	})
+
+	It("handles Push and Pull error cases and push of .tar file", func() {
+		// Push non-existent source
+		Expect(oci.Push("/nonexistent/file/path", "localhost:5000/test:v1", true)).To(HaveOccurred())
+
+		// Push with invalid reference
+		Expect(oci.Push(srcDir, "INVALID REF WITH SPACES", true)).To(MatchError(ContainSubstring("invalid reference")))
+
+		// Pull with invalid reference
+		Expect(oci.Pull("INVALID REF WITH SPACES", "", oci.PullOptions{})).To(MatchError(ContainSubstring("invalid reference")))
+
+		// Push a .tar package directly to in-memory registry and pull with empty destDir
+		srv := httptest.NewServer(registry.New())
+		defer srv.Close()
+
+		tarPath := filepath.Join(GinkgoT().TempDir(), "pkg.tar")
+		Expect(oci.Package(srcDir, tarPath, "example.com/test:v1")).To(Succeed())
+
+		host := srv.Listener.Addr().String()
+		ref := host + "/test/pkg-artifact:v1.0.0"
+		Expect(oci.Push(tarPath, ref, true)).To(Succeed())
+
+		// Pull into empty destDir (defaults to repo name)
+		cwd, err := os.Getwd()
+		Expect(err).NotTo(HaveOccurred())
+		pullTmp := GinkgoT().TempDir()
+		Expect(os.Chdir(pullTmp)).To(Succeed())
+		defer func() { _ = os.Chdir(cwd) }()
+
+		Expect(oci.Pull("oci://"+ref, "", oci.PullOptions{Insecure: true})).To(Succeed())
+		Expect(filepath.Join(pullTmp, "pkg-artifact", "app.yaml")).To(BeAnExistingFile())
 	})
 })

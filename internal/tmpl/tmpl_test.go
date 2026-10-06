@@ -125,4 +125,36 @@ var _ = Describe("function map", func() {
 		}
 		wg.Wait()
 	})
+
+	It("supports Compiler.LeftDelim and Template.Single", func() {
+		cDefault := NewCompiler(Options{})
+		Expect(cDefault.LeftDelim()).To(Equal("{{"))
+
+		cCustom := NewCompiler(Options{LeftDelim: "[["})
+		Expect(cCustom.LeftDelim()).To(Equal("[["))
+
+		tSingle, err := cDefault.Compile("f", "{{ true }}")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(tSingle.Single()).To(BeTrue())
+
+		tMulti, err := cDefault.Compile("f", "a {{ true }}")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(tMulti.Single()).To(BeFalse())
+	})
+
+	It("supports fromYamlArray and required with value", func() {
+		res, err := run(NewCompiler(Options{}), `{{ fromYamlArray "- a\n- b" }}`, fakeResolver{})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res.Value).To(Equal([]any{"a", "b"}))
+
+		_, err = run(NewCompiler(Options{}), `{{ fromYamlArray ":\n:\ninvalid" }}`, fakeResolver{})
+		Expect(err).To(HaveOccurred())
+
+		resReq, err := run(NewCompiler(Options{}), `{{ required "msg" "my-val" }}`, fakeResolver{})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(resReq.Value).To(Equal("my-val"))
+
+		_, err = run(NewCompiler(Options{}), `{{ fromYaml ":\n:\ninvalid" }}`, fakeResolver{})
+		Expect(err).To(HaveOccurred())
+	})
 })

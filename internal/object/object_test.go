@@ -6,6 +6,8 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"go.yaml.in/yaml/v3"
+
+	"github.com/bricks-it/ktpl/internal/path"
 )
 
 func TestObject(t *testing.T) {
@@ -119,4 +121,50 @@ metadata:
 		Entry(nil, "apiVersion: v1\nkind: A\nmetadata:\n  name: a\n  annotations:\n    ktpl.io/ignore-key: nope\n", "must be a JSON list of paths"),
 		Entry(nil, "- a\n", "document must be a mapping"),
 	)
+
+	It("handles Rel, Location, RecordOrigin and FileOf", func() {
+		o := mustObject("apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: a\n")
+		o.File = "base/sub/app.yaml"
+		o.Root = "base"
+		Expect(o.Rel()).To(Equal("sub/app.yaml"))
+
+		Expect(o.Location(nil)).To(Equal("base/sub/app.yaml:1"))
+		n := o.Body()
+		Expect(o.Location(n)).To(Equal("base/sub/app.yaml:1"))
+
+		otherNode := &yaml.Node{Kind: yaml.ScalarNode, Line: 10, Value: "overlay"}
+		o.RecordOrigin(otherNode, "overlays/prod/app.yaml")
+		Expect(o.FileOf(otherNode)).To(Equal("overlays/prod/app.yaml"))
+		Expect(o.Location(otherNode)).To(Equal("overlays/prod/app.yaml:10"))
+	})
+
+	It("handles IsIgnored and ktpl.io/ignore annotation", func() {
+		o := mustObject("apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: a\n  annotations:\n    ktpl.io/ignore: \"true\"\n")
+		Expect(o.Ignore).To(BeTrue())
+
+		o2 := mustObject("apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: a\n  annotations:\n    ktpl.io/ignore-key: '[\"data.secret\"]'\n")
+		Expect(o2.IsIgnored(path.MustParse("data.secret"))).To(BeTrue())
+		Expect(o2.IsIgnored(path.MustParse("data.other"))).To(BeFalse())
+	})
+
+	It("handles RefreshIdentity, Reanalyze and Identity methods", func() {
+		o := mustObject("apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: '{{ name }}'\n  namespace: '{{ ns }}'\n")
+		Expect(o.Floating).To(BeTrue())
+
+		// Update name in body
+		meta := o.Body().Content[5] // metadata mapping
+		meta.Content[1].Value = "real-name"
+		meta.Content[3].Value = "real-ns"
+
+		o.RefreshIdentity()
+		Expect(o.ID.Name).To(Equal("real-name"))
+		Expect(o.ID.Namespace).To(Equal("real-ns"))
+		Expect(o.Floating).To(BeTrue()) // remains true until reanalyze
+
+		Expect(o.ID.String()).To(Equal("real-ns/ConfigMap/real-name"))
+		Expect(o.ID.Key()).To(Equal("real-ns/configmap./real-name"))
+
+		Expect(o.Reanalyze("{{")).To(Succeed())
+		Expect(o.Floating).To(BeFalse())
+	})
 })

@@ -32,7 +32,7 @@ test-race: ## Run tests with the race detector
 
 .PHONY: cover
 cover: ## Run tests with coverage (coverage.out)
-	go test -race -coverprofile=coverage.out ./...
+	go test -race -coverprofile=coverage.out -covermode=atomic ./...
 	go tool cover -func=coverage.out | tail -n 1
 
 .PHONY: golden

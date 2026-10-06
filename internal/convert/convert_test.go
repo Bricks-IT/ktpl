@@ -37,7 +37,26 @@ var _ = Describe("FromNode", func() {
 		Entry("timestamp kept as written", "2024-01-02", "2024-01-02"),
 		Entry("map", "a: 1\nb: x", map[string]any{"a": 1, "b": "x"}),
 		Entry("list", "[1, a]", []any{1, "a"}),
+		Entry("alias node", "anchor: &val hello\nref: *val", map[string]any{"anchor": "hello", "ref": "hello"}),
 	)
+
+	It("handles DocumentNode and empty DocumentNode", func() {
+		doc := &yaml.Node{Kind: yaml.DocumentNode}
+		val, err := FromNode(doc)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(val).To(BeNil())
+
+		doc.Content = []*yaml.Node{{Kind: yaml.ScalarNode, Tag: "!!str", Value: "hello"}}
+		val, err = FromNode(doc)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(val).To(Equal("hello"))
+	})
+
+	It("returns error for unsupported node kind", func() {
+		bad := &yaml.Node{Kind: 999}
+		_, err := FromNode(bad)
+		Expect(err).To(MatchError(ContainSubstring("unsupported node kind")))
+	})
 })
 
 var _ = Describe("ToNode", func() {
@@ -60,5 +79,10 @@ var _ = Describe("ToNode", func() {
 		n, err := ToNode(map[string]any{"b": 1, "a": 2})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(n.Content[0].Value).To(Equal("a"))
+	})
+
+	It("fails when encoding unencodable types", func() {
+		_, err := ToNode(make(chan int))
+		Expect(err).To(HaveOccurred())
 	})
 })

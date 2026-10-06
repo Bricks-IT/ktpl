@@ -57,13 +57,18 @@ func FromNode(n *yaml.Node) (any, error) {
 }
 
 // ToNode converts a Go value to a node. Map keys are sorted.
-func ToNode(v any) (*yaml.Node, error) {
+func ToNode(v any) (node *yaml.Node, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("encoding value to YAML node: %v", r)
+		}
+	}()
 	if s, ok := v.(string); ok {
 		return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: s}, nil
 	}
 	var n yaml.Node
-	if err := n.Encode(v); err != nil {
-		return nil, err
+	if encErr := n.Encode(v); encErr != nil {
+		return nil, encErr
 	}
 	if n.Kind == yaml.DocumentNode && len(n.Content) == 1 {
 		return n.Content[0], nil

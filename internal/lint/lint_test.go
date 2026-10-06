@@ -1,6 +1,7 @@
 package lint
 
 import (
+	"strings"
 	"testing"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -75,6 +76,32 @@ var _ = Describe("rules", func() {
 		a, b := obj(header+"  name: a\n"), obj(header+"  name: a\n")
 		Expect(messages(Run(nil, []*object.Object{a, b}))).To(ConsistOf(ContainSubstring("duplicate object identity, also defined at t.yaml:1")))
 	})
+
+	It("ignores pending names in duplicate identity checks", func() {
+		floating1 := obj("apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: '{{ name }}'\n")
+		floating2 := obj("apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: '{{ name }}'\n")
+		ctx := &State{IsPending: func(_ *object.Object, _ path.Path) bool {
+			return true
+		}}
+		Expect(messages(Run(ctx, []*object.Object{floating1, floating2}))).To(BeEmpty())
+	})
+
+	It("exposes rule names", func() {
+		for _, r := range Rules() {
+			Expect(r.Name()).NotTo(BeEmpty())
+		}
+		for _, r := range GlobalRules() {
+			Expect(r.Name()).NotTo(BeEmpty())
+		}
+	})
+
+	It("flags structure rule violations on mutated nodes", func() {
+		o := obj(header + "  name: a\n")
+		// Remove apiVersion
+		o.Body().Content = o.Body().Content[2:]
+		errs := messages(Run(nil, []*object.Object{o}))
+		Expect(errs).To(ContainElement(ContainSubstring("apiVersion must be a non-empty string")))
+	})
 })
 
 var _ = Describe("name validators", func() {
@@ -90,4 +117,25 @@ var _ = Describe("name validators", func() {
 		Entry(nil, "UPPER.io/x", false),
 		Entry(nil, "x_", false),
 	)
+
+	It("validates DNS labels, subdomains, path segments and label values", func() {
+		Expect(ValidDNS1123Label("valid-label")).To(BeEmpty())
+		Expect(ValidDNS1123Label("toolong" + strings.Repeat("x", 60))).To(ContainSubstring("no more than 63 characters"))
+
+		Expect(ValidDNS1123Subdomain("valid.subdomain.com")).To(BeEmpty())
+		Expect(ValidDNS1123Subdomain("toolong" + strings.Repeat("x", 250))).To(ContainSubstring("no more than 253 characters"))
+
+		Expect(ValidPathSegmentName(".")).To(ContainSubstring("must not be '.' or '..'"))
+		Expect(ValidPathSegmentName("..")).To(ContainSubstring("must not be '.' or '..'"))
+		Expect(ValidPathSegmentName("a/b")).To(ContainSubstring("must not contain '/' or '%'"))
+		Expect(ValidPathSegmentName("a%b")).To(ContainSubstring("must not contain '/' or '%'"))
+		Expect(ValidPathSegmentName("ok-name")).To(BeEmpty())
+
+		Expect(validLabelValue("ok-val")).To(BeEmpty())
+		Expect(validLabelValue("toolong" + strings.Repeat("x", 60))).To(ContainSubstring("no more than 63 characters"))
+
+		Expect(validQualifiedName("toolong" + strings.Repeat("x", 250) + "/name")).To(ContainSubstring("prefix"))
+		Expect(validQualifiedName("prefix/toolong" + strings.Repeat("x", 60))).To(ContainSubstring("name part must be no more than 63 characters"))
+		Expect(validQualifiedName("prefix/")).To(ContainSubstring("name part must not be empty"))
+	})
 })

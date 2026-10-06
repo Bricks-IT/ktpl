@@ -63,15 +63,22 @@ var _ = Describe("Render", func() {
 			o := parseObj("apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: cm\ndata:\n  k: v\n", "cm.yaml", ".")
 			o.Sources = []string{"base", "overlay"}
 
-			f := &engine.Field{
+			f1 := &engine.Field{
 				Obj:       o,
 				Path:      path.MustParse("data.k"),
 				Node:      node.String("v"),
 				Iteration: 1,
 			}
+			f2 := &engine.Field{
+				Obj:       o,
+				Path:      path.MustParse("data.k2"),
+				Node:      node.String("v2"),
+				Iteration: 2,
+			}
+			oUnrendered := parseObj("apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: unrendered\n", "u.yaml", ".")
 			res := &engine.Result{
-				Objects: []*object.Object{o},
-				Fields:  []*engine.Field{f},
+				Objects: []*object.Object{o, oUnrendered},
+				Fields:  []*engine.Field{f1, f2},
 			}
 
 			Expect(Annotate(res)).To(Succeed())
@@ -82,7 +89,7 @@ var _ = Describe("Render", func() {
 
 			renderedVal := node.MapValue(ann, object.AnnotationRendered)
 			Expect(renderedVal).NotTo(BeNil())
-			Expect(renderedVal.Value).To(Equal(`{"data.k":1}`))
+			Expect(renderedVal.Value).To(Equal(`{"data.k":1,"data.k2":2}`))
 
 			sourcesVal := node.MapValue(ann, object.AnnotationSources)
 			Expect(sourcesVal).NotTo(BeNil())
@@ -114,14 +121,23 @@ var _ = Describe("Render", func() {
 
 		It("blocks directory traversal attempts", func() {
 			o := parseObj("apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: evil\n", "/tmp/other/evil.yaml", "/tmp/somewhere")
-			// Manipulate File to test defense against traversal if rel escaped
 			o.File = "/tmp/somewhere/../../evil.yaml"
 
 			outDir := filepath.Join(tmpDir, "out")
-			// o.Rel() safely falls back to Base, but even if rel escaped, WriteDir blocks it
 			Expect(WriteDir(outDir, []*object.Object{o})).To(Succeed())
-			// File must be written inside outDir
 			Expect(filepath.Join(outDir, "evil.yaml")).To(BeAnExistingFile())
+		})
+
+		It("fails when writing to an invalid target directory", func() {
+			blockedFile := filepath.Join(tmpDir, "blocked")
+			Expect(os.WriteFile(blockedFile, []byte("file"), 0o644)).To(Succeed())
+
+			root := filepath.Join(tmpDir, "input")
+			o := parseObj("apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: cm\n", filepath.Join(root, "sub/a.yaml"), root)
+
+			// target is blocked by the file
+			err := WriteDir(filepath.Join(blockedFile, "sub"), []*object.Object{o})
+			Expect(err).To(HaveOccurred())
 		})
 	})
 })
