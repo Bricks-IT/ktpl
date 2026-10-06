@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/bricks-it/ktpl/actions/workflows/ci.yml/badge.svg)](https://github.com/bricks-it/ktpl/actions/workflows/ci.yml)
 [![Coverage](https://img.shields.io/badge/coverage-91%25-brightgreen)](https://github.com/bricks-it/ktpl/actions/workflows/ci.yml)
-[![Go Report Card](https://goreportcard.com/badge/github.com/bricks-it/ktpl)](https://goreportcard.com/report/github.com/bricks-it/ktpl)
+[![Go Version](https://img.shields.io/github/go-mod/go-version/bricks-it/ktpl)](go.mod)
 [![Go Reference](https://pkg.go.dev/badge/github.com/bricks-it/ktpl.svg)](https://pkg.go.dev/github.com/bricks-it/ktpl)
 [![Release](https://img.shields.io/github/v/release/bricks-it/ktpl)](https://github.com/bricks-it/ktpl/releases)
 [![License](https://img.shields.io/github/license/bricks-it/ktpl)](LICENSE)
