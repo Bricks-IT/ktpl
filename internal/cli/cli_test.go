@@ -260,6 +260,39 @@ var _ = Describe("Run", func() {
 			Expect(r.stdout).To(ContainSubstring("tier: frontend"))
 			Expect(r.stdout).To(ContainSubstring(`ktpl.io/sources: '["` + baseDir + `","` + ref + `"]'`))
 		})
+
+		It("applies --name-prefix and --name-suffix to emitted objects", func() {
+			baseDir := GinkgoT().TempDir()
+			Expect(os.WriteFile(filepath.Join(baseDir, "app.yaml"), []byte("apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: app\ndata:\n  k: v\n"), 0o644)).To(Succeed())
+
+			r := run("", "--name-prefix", "prod-", "--name-suffix", "-v1", baseDir)
+			Expect(r.code).To(Equal(ExitOK), r.stderr)
+			Expect(r.stdout).To(ContainSubstring("name: prod-app-v1"))
+
+			// Test alias flags
+			r = run("", "--nameprefix", "dev-", "--namesuffix", "-test", baseDir)
+			Expect(r.code).To(Equal(ExitOK), r.stderr)
+			Expect(r.stdout).To(ContainSubstring("name: dev-app-test"))
+		})
+
+		It("rejects names exceeding 63 characters with prefix and suffix", func() {
+			baseDir := GinkgoT().TempDir()
+			longName := strings.Repeat("a", 55)
+			Expect(os.WriteFile(filepath.Join(baseDir, "app.yaml"), []byte("apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: "+longName+"\ndata:\n  k: v\n"), 0o644)).To(Succeed())
+
+			r := run("", "--name-prefix", "very-long-prefix-", baseDir)
+			Expect(r.code).To(Equal(ExitError))
+			Expect(r.stderr).To(ContainSubstring("exceeds Kubernetes limit of 63 characters"))
+		})
+
+		It("rejects invalid characters in --name-prefix or --name-suffix", func() {
+			baseDir := GinkgoT().TempDir()
+			Expect(os.WriteFile(filepath.Join(baseDir, "app.yaml"), []byte("apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: app\ndata:\n  k: v\n"), 0o644)).To(Succeed())
+
+			r := run("", "--name-prefix", "Prod ", baseDir)
+			Expect(r.code).To(Equal(ExitUsage))
+			Expect(r.stderr).To(ContainSubstring("--name-prefix \"Prod \": must consist of lowercase alphanumerics, '-' or '.'"))
+		})
 	})
 })
 

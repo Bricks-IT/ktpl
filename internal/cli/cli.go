@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"regexp"
 	"runtime/debug"
 	"slices"
 	"strings"
@@ -13,12 +14,17 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/bricks-it/ktpl/internal/engine"
+	"github.com/bricks-it/ktpl/internal/lint"
 	"github.com/bricks-it/ktpl/internal/loader"
+	"github.com/bricks-it/ktpl/internal/node"
+	"github.com/bricks-it/ktpl/internal/object"
 	"github.com/bricks-it/ktpl/internal/oci"
 	"github.com/bricks-it/ktpl/internal/overlay"
 	"github.com/bricks-it/ktpl/internal/render"
 	"github.com/bricks-it/ktpl/internal/tmpl"
 )
+
+var nameAffixRe = regexp.MustCompile(`^[a-z0-9.-]*$`)
 
 // version is set at build time with -ldflags "-X github.com/bricks-it/ktpl/internal/cli.version=...".
 var version = "dev"
@@ -48,6 +54,8 @@ type options struct {
 	insecure      bool
 	leftDelim     string
 	rightDelim    string
+	namePrefix    string
+	nameSuffix    string
 }
 
 // Run executes ktpl with args (without the program name) and returns the process exit code.
@@ -100,6 +108,12 @@ or remote OCI registry references (oci://<image>[:<tag>]).`,
 	f.BoolVar(&opts.insecure, "insecure", false, "allow plain HTTP and skip TLS certificate verification for OCI registries")
 	f.StringVar(&opts.leftDelim, "left-delim", defaultDel, "left template delimiter")
 	f.StringVar(&opts.rightDelim, "right-delim", "}}", "right template delimiter")
+	f.StringVar(&opts.namePrefix, "name-prefix", "", "prefix prepended to metadata.name of emitted objects")
+	f.StringVar(&opts.nameSuffix, "name-suffix", "", "suffix appended to metadata.name of emitted objects")
+	f.StringVar(&opts.namePrefix, "nameprefix", "", "alias for --name-prefix")
+	_ = f.MarkHidden("nameprefix")
+	f.StringVar(&opts.nameSuffix, "namesuffix", "", "alias for --name-suffix")
+	_ = f.MarkHidden("namesuffix")
 
 	if err := cmd.Execute(); err != nil {
 		_, _ = fmt.Fprintf(stderr, "Error: %v\n", err)
@@ -197,6 +211,10 @@ func (o *options) validate(renderDstChanged bool) error {
 		return errors.New("--render-dst dir:// requires a target directory")
 	case o.output != "" && renderDstChanged && o.renderDst != "dir://"+o.output:
 		return errors.New("cannot specify both -o/--output and --render-dst")
+	case o.namePrefix != "" && !nameAffixRe.MatchString(o.namePrefix):
+		return fmt.Errorf("--name-prefix %q: must consist of lowercase alphanumerics, '-' or '.'", o.namePrefix)
+	case o.nameSuffix != "" && !nameAffixRe.MatchString(o.nameSuffix):
+		return fmt.Errorf("--name-suffix %q: must consist of lowercase alphanumerics, '-' or '.'", o.nameSuffix)
 	}
 	return nil
 }
@@ -242,6 +260,11 @@ func execute(roots []string, opts *options, stdin io.Reader, stdout, stderr io.W
 		}
 	}
 	selected := render.Selected(res.Objects, render.Options{KeepLocal: opts.keepLocal})
+	if opts.namePrefix != "" || opts.nameSuffix != "" {
+		if err := applyNameAffixes(selected, opts.namePrefix, opts.nameSuffix); err != nil {
+			return err
+		}
+	}
 	outDir := ""
 	if strings.HasPrefix(opts.renderDst, "dir://") {
 		outDir = strings.TrimPrefix(opts.renderDst, "dir://")
@@ -252,6 +275,38 @@ func execute(roots []string, opts *options, stdin io.Reader, stdout, stderr io.W
 		return render.WriteDir(outDir, selected)
 	}
 	return render.Encode(stdout, selected)
+}
+
+func applyNameAffixes(objs []*object.Object, prefix, suffix string) error {
+	for _, o := range objs {
+		if o.Ignore {
+			continue
+		}
+		meta := node.MapValue(o.Body(), "metadata")
+		if meta == nil {
+			continue
+		}
+		nameNode := node.MapValue(meta, "name")
+		if nameNode == nil || !node.IsString(nameNode) {
+			continue
+		}
+		oldName := nameNode.Value
+		newName := prefix + oldName + suffix
+		if len(newName) > 63 {
+			return fmt.Errorf("%s: resulting metadata.name %q exceeds Kubernetes limit of 63 characters (%d chars)",
+				o.ID, newName, len(newName))
+		}
+		validate := lint.ValidDNS1123Subdomain
+		if strings.EqualFold(o.ID.Group, "rbac.authorization.k8s.io") {
+			validate = lint.ValidPathSegmentName
+		}
+		if msg := validate(newName); msg != "" {
+			return fmt.Errorf("%s: resulting metadata.name %q %s", o.ID, newName, msg)
+		}
+		nameNode.Value = newName
+		o.ID.Name = newName
+	}
+	return nil
 }
 
 func isTerminal(r io.Reader) bool {

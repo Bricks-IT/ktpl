@@ -145,6 +145,26 @@ A template produces text. To avoid `replicas: "3"`:
 - Otherwise (text around the action, or several actions) the result is a string.
 - Force a string with `| toString`.
 
+## Merging mappings and common labels (YAML merge key `<<`)
+
+ktpl supports the standard YAML merge key (`<<`) combined with `ref` to inherit common labels, annotations, or environment variables from another object without repeating boilerplate:
+
+```yaml
+metadata:
+  name: argocd-rbac-cm
+  namespace: argocd
+  labels:
+    <<: '{{ ref "argocd/configmap/ktpl-parameter" "metadata.labels" }}'
+    app.kubernetes.io/name: argocd-rbac-cm
+    app.kubernetes.io/component: server
+    mylabel: "2"
+```
+
+- When the `ref` resolves to a mapping (e.g. `metadata.labels` of a parameter object), its key-value pairs are merged into the parent mapping.
+- Existing explicit keys (`app.kubernetes.io/name`, `app.kubernetes.io/component`, `mylabel`) take precedence over the merged keys.
+- Once merged, the `<<` key is removed from the emitted YAML output.
+- Deferral works transparently: if the referenced object's labels contain unresolved templates, the merge key waits for the next iteration.
+
 ## Annotations
 
 ### Written by ktpl
@@ -334,6 +354,8 @@ ktpl pull <reference> [-o <destination>] [--insecure]
       --stop-after int       stop after N iterations and emit the partial state
       --render-dst string    output destination: 'stdout' or 'dir://<dir>' (default "stdout")
   -o, --output string        output folder (shorthand for --render-dst dir://<dir>)
+      --name-prefix string   prefix prepended to metadata.name of emitted objects (max 63 chars limit check)
+      --name-suffix string   suffix appended to metadata.name of emitted objects (max 63 chars limit check)
       --no-annotations       do not write the ktpl.io/rendered and ktpl.io/sources annotations
       --keep-local           also emit local objects
       --hermetic             forbid non-deterministic template functions
@@ -374,6 +396,8 @@ stdout (or `rendered/error.txt` the expected stderr), and an optional `args` fil
 | [08-lint-error](examples/08-lint-error) | Per-iteration lint → error |
 | [09-overlay](examples/09-overlay) | Multiple folders, merge and append, `ktpl.io/sources` |
 | [10-argocd](examples/10-argocd) | Real app: Argo CD chart converted to ktpl, `ktpl-parameter` ConfigMap, prod overlay |
+| [11-name-affixes](examples/11-name-affixes) | `--name-prefix` and `--name-suffix` with 63-char validation |
+| [12-merge-labels](examples/12-merge-labels) | Merging common labels with YAML merge key `<<` and `ref` |
 
 ## Development
 
