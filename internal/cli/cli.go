@@ -52,31 +52,6 @@ type options struct {
 
 // Run executes ktpl with args (without the program name) and returns the process exit code.
 func Run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
-	for i, arg := range args {
-		if len(arg) > 0 && arg[0] != '-' {
-			switch arg {
-			case "package":
-				return runPackage(args[i+1:], stdout, stderr)
-			case "push":
-				return runPush(args[i+1:], stdout, stderr)
-			case "pull":
-				return runPull(args[i+1:], stdout, stderr)
-			case "help":
-				if len(args) > i+1 {
-					switch args[i+1] {
-					case "package":
-						return runPackage([]string{"--help"}, stdout, stderr)
-					case "push":
-						return runPush([]string{"--help"}, stdout, stderr)
-					case "pull":
-						return runPull([]string{"--help"}, stdout, stderr)
-					}
-				}
-			}
-			break
-		}
-	}
-
 	opts := &options{}
 	cmd := &cobra.Command{
 		Use:   "ktpl [flags] <folder-or-oci-url>...",
@@ -86,26 +61,21 @@ func Run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 iterative: a field is rendered once every value it references is resolved.
 
 Inputs can be local directories, single YAML files, OCI artifact packages (.tar),
-or remote OCI registry references (oci://<image>[:<tag>]).
-
-Commands:
-  package     Package a template folder into an OCI artifact archive (.tar)
-  push        Push an OCI artifact archive or folder to a remote registry
-  pull        Pull an OCI artifact from a remote registry and extract its templates`,
+or remote OCI registry references (oci://<image>[:<tag>]).`,
 		Version:       resolveVersion(),
 		SilenceErrors: true,
 		SilenceUsage:  true,
-		Args: func(_ *cobra.Command, args []string) error {
-			if len(args) == 0 {
+		Args: func(_ *cobra.Command, a []string) error {
+			if len(a) == 0 {
 				return &usageError{errors.New("at least one input folder is required")}
 			}
 			return nil
 		},
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(cmd *cobra.Command, a []string) error {
 			if err := opts.validate(cmd.Flags().Changed("render-dst")); err != nil {
 				return &usageError{err}
 			}
-			return execute(args, opts, stdin, stdout, stderr)
+			return execute(a, opts, stdin, stdout, stderr)
 		},
 	}
 	cmd.SetArgs(args)
@@ -114,6 +84,8 @@ Commands:
 	cmd.SetErr(stderr)
 	cmd.SetVersionTemplate("ktpl {{.Version}}\n")
 	cmd.SetFlagErrorFunc(func(_ *cobra.Command, err error) error { return &usageError{err} })
+
+	cmd.AddCommand(newPackageCmd(), newPushCmd(), newPullCmd())
 
 	f := cmd.Flags()
 	f.SortFlags = false
@@ -141,7 +113,7 @@ Commands:
 	return ExitOK
 }
 
-func runPackage(args []string, stdout, stderr io.Writer) int {
+func newPackageCmd() *cobra.Command {
 	var (
 		output string
 		tag    string
@@ -159,27 +131,13 @@ func runPackage(args []string, stdout, stderr io.Writer) int {
 			return oci.Package(a[0], output, tag)
 		},
 	}
-	cmd.SetArgs(args)
-	cmd.SetOut(stdout)
-	cmd.SetErr(stderr)
 	cmd.SetFlagErrorFunc(func(_ *cobra.Command, err error) error { return &usageError{err} })
-
 	cmd.Flags().StringVarP(&output, "output", "o", "", "output archive path (default: <folder-name>.tar)")
 	cmd.Flags().StringVarP(&tag, "tag", "t", "ktpl-artifact:latest", "tag reference inside the archive")
-
-	if err := cmd.Execute(); err != nil {
-		_, _ = fmt.Fprintf(stderr, "Error: %v\n", err)
-		var ue *usageError
-		if errors.As(err, &ue) {
-			_, _ = fmt.Fprintln(stderr, "Run 'ktpl package --help' for usage.")
-			return ExitUsage
-		}
-		return ExitError
-	}
-	return ExitOK
+	return cmd
 }
 
-func runPush(args []string, stdout, stderr io.Writer) int {
+func newPushCmd() *cobra.Command {
 	var insecure bool
 	cmd := &cobra.Command{
 		Use:   "push <package-or-folder> <reference>",
@@ -194,26 +152,12 @@ func runPush(args []string, stdout, stderr io.Writer) int {
 			return oci.Push(a[0], a[1], insecure)
 		},
 	}
-	cmd.SetArgs(args)
-	cmd.SetOut(stdout)
-	cmd.SetErr(stderr)
 	cmd.SetFlagErrorFunc(func(_ *cobra.Command, err error) error { return &usageError{err} })
-
 	cmd.Flags().BoolVar(&insecure, "insecure", false, "allow plain HTTP and skip TLS certificate verification")
-
-	if err := cmd.Execute(); err != nil {
-		_, _ = fmt.Fprintf(stderr, "Error: %v\n", err)
-		var ue *usageError
-		if errors.As(err, &ue) {
-			_, _ = fmt.Fprintln(stderr, "Run 'ktpl push --help' for usage.")
-			return ExitUsage
-		}
-		return ExitError
-	}
-	return ExitOK
+	return cmd
 }
 
-func runPull(args []string, stdout, stderr io.Writer) int {
+func newPullCmd() *cobra.Command {
 	var (
 		output   string
 		insecure bool
@@ -231,24 +175,10 @@ func runPull(args []string, stdout, stderr io.Writer) int {
 			return oci.Pull(a[0], output, oci.PullOptions{Insecure: insecure})
 		},
 	}
-	cmd.SetArgs(args)
-	cmd.SetOut(stdout)
-	cmd.SetErr(stderr)
 	cmd.SetFlagErrorFunc(func(_ *cobra.Command, err error) error { return &usageError{err} })
-
 	cmd.Flags().StringVarP(&output, "output", "o", "", "destination directory to extract templates to")
 	cmd.Flags().BoolVar(&insecure, "insecure", false, "allow plain HTTP and skip TLS certificate verification")
-
-	if err := cmd.Execute(); err != nil {
-		_, _ = fmt.Fprintf(stderr, "Error: %v\n", err)
-		var ue *usageError
-		if errors.As(err, &ue) {
-			_, _ = fmt.Fprintln(stderr, "Run 'ktpl pull --help' for usage.")
-			return ExitUsage
-		}
-		return ExitError
-	}
-	return ExitOK
+	return cmd
 }
 
 func (o *options) validate(renderDstChanged bool) error {

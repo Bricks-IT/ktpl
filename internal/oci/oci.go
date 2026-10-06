@@ -69,6 +69,9 @@ func ArchiveDir(dir string, w io.Writer) error {
 		if fi.IsDir() {
 			return nil
 		}
+		if !fi.Mode().IsRegular() {
+			return nil
+		}
 		rel, err := filepath.Rel(cleanDir, p)
 		if err != nil {
 			return err
@@ -85,8 +88,8 @@ func ArchiveDir(dir string, w io.Writer) error {
 		if err != nil {
 			return err
 		}
-		defer func() { _ = f.Close() }()
 		_, err = io.Copy(tw, f)
+		_ = f.Close()
 		return err
 	})
 	if err != nil {
@@ -101,52 +104,22 @@ func ArchiveDir(dir string, w io.Writer) error {
 	return gw.Close()
 }
 
-// ExtractLayer extracts the files from layer into destDir.
-// It prevents directory traversal attacks ("Zip Slip").
-func ExtractLayer(l v1.Layer, destDir string) error {
-	rc, err := l.Uncompressed()
-	if err != nil {
-		return err
-	}
-	defer func() { _ = rc.Close() }()
+const (
+	maxExtractedFiles = 5000
+	maxExtractedBytes = 500 << 20 // 500 MB
+	maxFileSize       = 100 << 20 // 100 MB per file
+)
 
-	cleanDest := filepath.Clean(destDir)
-	tr := tar.NewReader(rc)
-	for {
-		hdr, err := tr.Next()
-		if errors.Is(err, io.EOF) {
-			break
-		}
-		if err != nil {
-			return err
-		}
-		name := strings.TrimPrefix(hdr.Name, "/")
-		target := filepath.Join(cleanDest, filepath.FromSlash(name))
-		cleanTarget := filepath.Clean(target)
-		rel, err := filepath.Rel(cleanDest, cleanTarget)
-		if err != nil || strings.HasPrefix(rel, "..") || filepath.IsAbs(rel) {
-			return fmt.Errorf("security: path %q escapes destination %q", hdr.Name, destDir)
-		}
-		if hdr.FileInfo().IsDir() {
-			if err := os.MkdirAll(cleanTarget, 0o755); err != nil {
-				return err
-			}
-			continue
-		}
-		if err := os.MkdirAll(filepath.Dir(cleanTarget), 0o755); err != nil {
-			return err
-		}
-		f, err := os.OpenFile(cleanTarget, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, hdr.FileInfo().Mode())
-		if err != nil {
-			return err
-		}
-		if _, err := io.Copy(f, io.LimitReader(tr, 100<<20)); err != nil {
-			_ = f.Close()
-			return err
-		}
-		_ = f.Close()
-	}
-	return nil
+type extractTracker struct {
+	totalFiles int
+	totalBytes int64
+}
+
+// ExtractLayer extracts the files from layer into destDir.
+// It prevents directory traversal attacks ("Zip Slip"), symlink attacks, and decompression bombs.
+func ExtractLayer(l v1.Layer, destDir string) error {
+	tracker := &extractTracker{}
+	return extractLayerWithTracker(l, destDir, tracker)
 }
 
 // ExtractImage extracts all layers of img in order into destDir.
@@ -159,9 +132,74 @@ func ExtractImage(img v1.Image, destDir string) error {
 		return errors.New("artifact has no layers")
 	}
 
+	tracker := &extractTracker{}
 	for _, l := range layers {
-		if err := ExtractLayer(l, destDir); err != nil {
+		if err := extractLayerWithTracker(l, destDir, tracker); err != nil {
 			return err
+		}
+	}
+	return nil
+}
+
+func extractLayerWithTracker(l v1.Layer, destDir string, tracker *extractTracker) error {
+	rc, err := l.Uncompressed()
+	if err != nil {
+		return err
+	}
+	defer func() { _ = rc.Close() }()
+
+	cleanDest := filepath.Clean(destDir)
+	tr := tar.NewReader(rc)
+
+	for {
+		hdr, err := tr.Next()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			return err
+		}
+
+		tracker.totalFiles++
+		if tracker.totalFiles > maxExtractedFiles {
+			return fmt.Errorf("security: OCI artifact contains too many files (limit: %d)", maxExtractedFiles)
+		}
+
+		name := strings.TrimPrefix(hdr.Name, "/")
+		target := filepath.Join(cleanDest, filepath.FromSlash(name))
+		cleanTarget := filepath.Clean(target)
+		rel, err := filepath.Rel(cleanDest, cleanTarget)
+		if err != nil || strings.HasPrefix(rel, "..") || filepath.IsAbs(rel) {
+			return fmt.Errorf("security: path %q escapes destination %q", hdr.Name, destDir)
+		}
+
+		switch hdr.Typeflag {
+		case tar.TypeDir:
+			if err := os.MkdirAll(cleanTarget, 0o755); err != nil {
+				return err
+			}
+		case tar.TypeReg:
+			if err := os.MkdirAll(filepath.Dir(cleanTarget), 0o755); err != nil {
+				return err
+			}
+			f, err := os.OpenFile(cleanTarget, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644) //nolint:gosec // standard readable file permission
+			if err != nil {
+				return err
+			}
+			written, err := io.Copy(f, io.LimitReader(tr, maxFileSize+1))
+			_ = f.Close()
+			if err != nil {
+				return err
+			}
+			if written > maxFileSize {
+				return fmt.Errorf("security: file %q exceeds maximum size limit (100MB)", hdr.Name)
+			}
+			tracker.totalBytes += written
+			if tracker.totalBytes > maxExtractedBytes {
+				return fmt.Errorf("security: total extracted artifact size exceeds limit (500MB)")
+			}
+		default:
+			return fmt.Errorf("security: unsupported or dangerous entry type %c for %q in OCI layer (symlinks and special files not allowed)", hdr.Typeflag, hdr.Name)
 		}
 	}
 	return nil

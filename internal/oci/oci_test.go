@@ -114,4 +114,49 @@ var _ = Describe("OCI", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(string(content)).To(Equal("apiVersion: v1\nkind: ConfigMap\n"))
 	})
+
+	It("rejects symlink and dangerous entries in layers", func() {
+		for _, flag := range []byte{tar.TypeSymlink, tar.TypeLink, tar.TypeFifo, tar.TypeChar, tar.TypeBlock} {
+			var buf bytes.Buffer
+			gw := gzip.NewWriter(&buf)
+			tw := tar.NewWriter(gw)
+
+			hdr := &tar.Header{
+				Typeflag: flag,
+				Name:     "entry.yaml",
+				Linkname: "/etc/passwd",
+			}
+			Expect(tw.WriteHeader(hdr)).To(Succeed())
+			Expect(tw.Close()).To(Succeed())
+			Expect(gw.Close()).To(Succeed())
+
+			b := buf.Bytes()
+			layer, err := tarball.LayerFromOpener(func() (io.ReadCloser, error) {
+				return io.NopCloser(bytes.NewReader(b)), nil
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			dest := GinkgoT().TempDir()
+			err = oci.ExtractLayer(layer, dest)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("unsupported or dangerous entry type"))
+		}
+	})
+
+	It("skips symlinks when archiving a directory", func() {
+		symlinkPath := filepath.Join(srcDir, "dangling-symlink")
+		_ = os.Symlink("/nonexistent/target", symlinkPath)
+
+		tarPath := filepath.Join(GinkgoT().TempDir(), "archive.tar")
+		Expect(oci.Package(srcDir, tarPath, "example.com/test:v1.0.0")).To(Succeed())
+
+		destDir := filepath.Join(GinkgoT().TempDir(), "extracted")
+		tag, err := name.NewTag("example.com/test:v1.0.0")
+		Expect(err).NotTo(HaveOccurred())
+		img, err := tarball.ImageFromPath(tarPath, &tag)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(oci.ExtractImage(img, destDir)).To(Succeed())
+
+		Expect(filepath.Join(destDir, "dangling-symlink")).NotTo(BeAnExistingFile())
+	})
 })

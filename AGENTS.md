@@ -11,8 +11,9 @@ point (default max 5 iterations) with a lint pass after each iteration.
 
 ## Non-negotiable invariants
 
-1. **Zero infrastructure.** Single static binary (`CGO_ENABLED=0`). Inputs/outputs are flat files. No database, no
-   daemon, no cache, no state persisted between runs, **no network**, no Kubernetes API access.
+1. **Zero infrastructure.** Single static binary (`CGO_ENABLED=0`). Inputs/outputs are flat files or OCI packages.
+   No database, no daemon, no cache, no state persisted between runs, **no Kubernetes API access**. Network access is
+   strictly confined to OCI registry operations (`oci://`, `push`, `pull`) and is never used during template rendering.
 2. **Determinism.** Same inputs + flags ⇒ byte-identical output. Never iterate over a Go map to produce output or to
    decide processing order; sort or keep document order. Field processing is **sequential**.
 3. **Snapshot (Jacobi) semantics.** During iteration *k*, every `ref` reads the snapshot S(k‑1). Writes go to the next
@@ -45,6 +46,7 @@ internal/convert/    Go value <-> yaml.Node
 internal/engine/     pending registry, snapshot, iteration loop, deferral, cycle/max detection, trace
 internal/lint/       per-iteration validators
 internal/render/     ktpl.io/rendered annotation, YAML encoding (indent 2), stream output
+internal/oci/        OCI packaging, archive/layer extraction, push/pull
 examples/<case>/     templates/, rendered/{output.yaml|error.txt}, optional args — golden tests
 ```
 
@@ -72,7 +74,7 @@ Run `.agents/skills/ktpl-release/scripts/preflight.sh` before declaring any task
 
 ## Dependency policy
 
-Allowed: `go.yaml.in/yaml/v3`, `github.com/spf13/cobra`, `github.com/Masterminds/sprig/v3`. Anything else needs
+Allowed: `go.yaml.in/yaml/v3`, `github.com/spf13/cobra`, `github.com/Masterminds/sprig/v3`, `github.com/google/go-containerregistry`. Anything else needs
 explicit approval from the maintainer. Never add `k8s.io/*` (too heavy; validation regexes are implemented locally).
 
 ## Skills
