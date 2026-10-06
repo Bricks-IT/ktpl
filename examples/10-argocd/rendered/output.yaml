@@ -1244,14 +1244,14 @@ metadata:
   namespace: argocd
   labels:
     app.kubernetes.io/name: argocd-rbac-cm
-    app.kubernetes.io/instance: argocd
     app.kubernetes.io/component: server
+    app.kubernetes.io/instance: argocd
     app.kubernetes.io/managed-by: ktpl
     app.kubernetes.io/part-of: argocd
     app.kubernetes.io/version: v3.5.3
   annotations:
     ktpl.io/sources: '["templates/base","templates/prod"]'
-    ktpl.io/rendered: '{"metadata.labels[''app.kubernetes.io/version'']":1}'
+    ktpl.io/rendered: '{"metadata.labels.<<":2}'
 data:
   policy.csv: ""
   policy.default: role:readonly

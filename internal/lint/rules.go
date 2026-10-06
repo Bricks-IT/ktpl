@@ -57,16 +57,16 @@ func (nameRule) Check(ctx *State, o *object.Object) []Error {
 	var errs []Error
 	meta := node.MapValue(o.Body(), "metadata")
 	if name := node.MapValue(meta, "name"); node.IsString(name) && name.Value != "" && !ctx.pending(o, pName) {
-		validate := validDNS1123Subdomain
+		validate := ValidDNS1123Subdomain
 		if strings.EqualFold(o.ID.Group, "rbac.authorization.k8s.io") {
-			validate = validPathSegmentName
+			validate = ValidPathSegmentName
 		}
 		if msg := validate(name.Value); msg != "" {
 			errs = append(errs, newError(o, pName, name, "metadata.name %q %s", name.Value, msg))
 		}
 	}
 	if ns := node.MapValue(meta, "namespace"); node.IsString(ns) && ns.Value != "" && !ctx.pending(o, pNamespace) {
-		if msg := validDNS1123Label(ns.Value); msg != "" {
+		if msg := ValidDNS1123Label(ns.Value); msg != "" {
 			errs = append(errs, newError(o, pNamespace, ns, "metadata.namespace %q %s", ns.Value, msg))
 		}
 	}
@@ -102,6 +102,9 @@ func checkStringMap(ctx *State, o *object.Object, p path.Path, what string, labe
 	var errs []Error
 	for i := 0; i+1 < len(m.Content); i += 2 {
 		k, v := m.Content[i], m.Content[i+1]
+		if k.Value == "<<" {
+			continue
+		}
 		kp := p.Child(path.Key(k.Value))
 		if msg := validQualifiedName(k.Value); msg != "" {
 			errs = append(errs, newError(o, kp, k, "%s key %q: %s", what, k.Value, msg))

@@ -185,6 +185,11 @@ func Run(objs []*object.Object, opts Options) (*Result, error) {
 	}
 	res := &Result{Objects: objs, Fields: e.fields}
 	e.refreshPending()
+	for _, o := range objs {
+		if err := node.ExpandMergeKeys(o.Body()); err != nil {
+			return nil, err
+		}
+	}
 	if err := e.lint(0); err != nil {
 		return nil, err
 	}
@@ -338,6 +343,11 @@ func (e *engine) iterate(k int, pending []*Field) ([]*Field, error) {
 			d.field.Obj.RefreshIdentity()
 		}
 		rendered = append(rendered, d.field)
+	}
+	for _, o := range e.objs {
+		if err := node.ExpandMergeKeys(o.Body()); err != nil {
+			return nil, err
+		}
 	}
 	return rendered, nil
 }

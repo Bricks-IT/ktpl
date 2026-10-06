@@ -21,8 +21,8 @@ var (
 	labelValueRe       = regexp.MustCompile(`^(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?$`)
 )
 
-// validDNS1123Label returns an explanation if s is not a valid RFC 1123 label, or "".
-func validDNS1123Label(s string) string {
+// ValidDNS1123Label returns an explanation if s is not a valid RFC 1123 label, or "".
+func ValidDNS1123Label(s string) string {
 	if len(s) > dns1123LabelMaxLen {
 		return "must be no more than 63 characters"
 	}
@@ -32,8 +32,8 @@ func validDNS1123Label(s string) string {
 	return ""
 }
 
-// validDNS1123Subdomain returns an explanation if s is not a valid RFC 1123 subdomain, or "".
-func validDNS1123Subdomain(s string) string {
+// ValidDNS1123Subdomain returns an explanation if s is not a valid RFC 1123 subdomain, or "".
+func ValidDNS1123Subdomain(s string) string {
 	if len(s) > dns1123SubdomainMaxLen {
 		return "must be no more than 253 characters"
 	}
@@ -43,8 +43,8 @@ func validDNS1123Subdomain(s string) string {
 	return ""
 }
 
-// validPathSegmentName is the minimal rule applied to every kind (used for RBAC objects).
-func validPathSegmentName(s string) string {
+// ValidPathSegmentName is the minimal rule applied to every kind (used for RBAC objects).
+func ValidPathSegmentName(s string) string {
 	if s == "." || s == ".." {
 		return "must not be '.' or '..'"
 	}
@@ -61,7 +61,7 @@ func validQualifiedName(s string) string {
 		if prefix == "" {
 			return "prefix must not be empty"
 		}
-		if msg := validDNS1123Subdomain(prefix); msg != "" {
+		if msg := ValidDNS1123Subdomain(prefix); msg != "" {
 			return "prefix " + msg
 		}
 		name = n
