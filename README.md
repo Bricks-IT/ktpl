@@ -445,4 +445,4 @@ GitHub Actions runs lint, test and build on every push and pull request; tagged 
 
 ## License
 
-TBD.
+Apache 2.0. See [LICENSE](LICENSE) for the full text.
