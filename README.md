@@ -1,5 +1,12 @@
 # ktpl
 
+[![CI](https://github.com/bricks-it/ktpl/actions/workflows/ci.yml/badge.svg)](https://github.com/bricks-it/ktpl/actions/workflows/ci.yml)
+[![Coverage](https://img.shields.io/badge/coverage-91%25-brightgreen)](https://github.com/bricks-it/ktpl/actions/workflows/ci.yml)
+[![Go Report Card](https://goreportcard.com/badge/github.com/bricks-it/ktpl)](https://goreportcard.com/report/github.com/bricks-it/ktpl)
+[![Go Reference](https://pkg.go.dev/badge/github.com/bricks-it/ktpl.svg)](https://pkg.go.dev/github.com/bricks-it/ktpl)
+[![Release](https://img.shields.io/github/v/release/bricks-it/ktpl)](https://github.com/bricks-it/ktpl/releases)
+[![License](https://img.shields.io/github/license/bricks-it/ktpl)](LICENSE)
+
 > **Status: design draft.** Syntax and behaviour described here are being validated; nothing is implemented yet. This application is actually vibe coded for proof of concept.
 
 **ktpl** is a templating engine for Kubernetes that only knows **native Kubernetes objects**.

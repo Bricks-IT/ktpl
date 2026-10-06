@@ -31,14 +31,26 @@ jobs:
           go-version-file: go.mod
       - name: Test (race + coverage)
         run: make cover
+      - name: Generate coverage HTML report
+        run: go tool cover -html=coverage.out -o coverage.html
+      - name: Upload coverage artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: |
+            coverage.out
+            coverage.html
+          retention-days: 14
       - name: Coverage summary
         run: |
-          {
-            echo '### Coverage'
-            echo '```'
-            go tool cover -func=coverage.out | tail -n 1
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
+          echo "### 📊 Code Coverage Summary" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          TOTAL=$(go tool cover -func=coverage.out | awk '/total:/ {print $3}')
+          echo "#### **Overall Coverage:** \`$TOTAL\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Package | Statements Covered |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| :--- | :--- |" >> "$GITHUB_STEP_SUMMARY"
+          go test -cover ./... | awk '/ok/ { printf "| `%s` | **%s** |\n", $2, $5 }' >> "$GITHUB_STEP_SUMMARY"
 
   build:
     runs-on: ubuntu-latest
