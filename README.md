@@ -18,7 +18,8 @@ ktpl ./manifests > rendered.yaml
 | Source format | Text templates + `values.yaml` | Native YAML + `kustomization.yaml` | **Native YAML only** |
 | Cross-object references | No (values only) | Limited (`replacements`) | **Yes, any field** |
 | Sources are valid YAML | No | Yes | **Yes** |
-| Overlays | Values files | Yes | **Yes, multiple folders** |
+| Overlays | Values files | Yes | **Yes, multiple folders & OCI layers** |
+| Packaging & Distribution | OCI charts / tarballs | Git / Remote bases | **Standard OCI artifacts & tarballs** |
 | Infrastructure required | None | None | **None** |
 
 ## Principles
@@ -282,6 +283,7 @@ Error: 1 pending field(s) after 2 iteration(s) (max-iterations=2):
 ```
 $ ktpl templates
 Error: iteration 1: lint failed, 1 error(s):
+  demo/ConfigMap/web metadata.labels.settings (templates/objects.yaml:16): label value must be a string, got map
 ```
 
 ## OCI Artifacts (Packaging & Distribution)
@@ -345,6 +347,15 @@ Inputs: `.yaml`, `.yml`, `.json` files, walked recursively, multi-document, sort
 A root can also be a single file, or `-` to read manifests from standard input (`stdin`).
 With `--render-dst dir://<dir>` (or `-o <dir>`), each object is written to the path of the file it came from
 (relative to its input folder), preserving the source directory structure.
+
+## Platform Engineering & SRE Guides
+
+In-depth technical guides for architecture, enterprise adoption, and production operations are available in [`_docs/`](_docs):
+
+- **[01. Platform Architecture & Core Invariants](_docs/01-platform-architecture.md)**: Mental model, Jacobi fixed-point iteration engine, typing mechanics, and architectural comparison with Helm/Kustomize/CUE.
+- **[02. Enterprise Golden Paths & OCI Distribution](_docs/02-golden-paths-and-oci.md)**: Packaging blueprints, multi-layer OCI compositions, registries, Cosign signing, and air-gapped workflows.
+- **[03. GitOps Integration (Argo CD, Flux & CI/CD)](_docs/03-gitops-integration.md)**: Production configurations for Argo CD (CMP v2 sidecar), Flux v2, and automated CI pipelines.
+- **[04. Day-2 Operations, Auditing & Troubleshooting](_docs/04-day2-operations-and-troubleshooting.md)**: Telemetry annotations (`ktpl.io/rendered`, `ktpl.io/sources`), step-by-step debugging (`--step`), and handling CRDs with Go templates.
 
 ## Examples
 
